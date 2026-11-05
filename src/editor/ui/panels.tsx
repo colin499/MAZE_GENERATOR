@@ -159,7 +159,7 @@ export function DifficultyPanel(): JSX.Element {
       <h2>Difficulty</h2>
       <div class="score">{r.score.toFixed(0)}<small>/ 100</small></div>
       <div class="bar"><div style={`width:${Math.min(100, r.score)}%`} /></div>
-      <table class="metrics">{rows.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</table>
+      <table class="metrics"><tbody>{rows.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table>
       <div class="btns" style="margin-top:8px">
         <button class={S.showSolution.value ? 'active' : ''} onClick={() => (S.showSolution.value = !S.showSolution.value)}>Solution</button>
         <button class={S.showHeat.value ? 'active' : ''} onClick={() => (S.showHeat.value = !S.showHeat.value)}>Dead-end heat</button>
