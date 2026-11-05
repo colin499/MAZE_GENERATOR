@@ -52,3 +52,10 @@ String expressions (`ValueInput.createByString('wallT')`) carry their own units.
 ## Benchmark: realistic 20×20 layer (perfect maze, 178 merged wall runs)
 floor extrude 0.01 s · 178 lines 0.05 s · Paths 0.00 s · thin extrude (join, start offset floorT) 0.55 s · **total 0.61 s**.
 Resulting body: 1, 597 faces. One `execute_code` chunk per layer is comfortably inside the 30 s limit.
+
+## Building inside a sub-component (export run, 2026-11-05)
+- `sketch.areProfilesShown = False` also skips **computing** profiles → closed-polygon extrudes fail with
+  "invalid profile(s)". Only hide profiles on centre-line sketches (thin extrude).
+- `Path.create(sketchLine, ...)` fails with `InternalValidationError: Utils::getObjectPath(sketchCurve ...)` when the
+  sketch lives in a sub-component created via `occurrences.addNewComponent`. Passing the proxy
+  `sketchLine.createForAssemblyContext(occurrence)` works. Activating the occurrence does not help.
