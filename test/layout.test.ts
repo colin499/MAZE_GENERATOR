@@ -29,7 +29,7 @@ describe('mergeRuns', () => {
     const walls = plan.groups[0]!.features.find((f) => f.op === 'thin')!;
     if (walls.op !== 'thin') throw new Error();
     const pitch = DEFAULT_PHYSICAL.chanW + DEFAULT_PHYSICAL.wallT;
-    const total = walls.segments.reduce((a, [p, q]) => a + Math.hypot(q[0] - p[0], q[1] - p[1]), 0) / pitch;
+    const total = walls.segments.reduce((a, [p, q]) => a + Math.hypot(q[0] - p[0], q[1] - p[1]) - DEFAULT_PHYSICAL.wallT, 0) / pitch;
     // a perfect maze on w*h cells has exactly (w+1)*h + (h+1)*w - 2*(w*h-1) unit walls... minus passages
     const unitWalls = (9 + 1) * 7 + (7 + 1) * 9 - (9 * 7 - 1);
     expect(Math.round(total)).toBe(unitWalls);

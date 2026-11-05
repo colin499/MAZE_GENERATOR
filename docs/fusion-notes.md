@@ -59,3 +59,6 @@ Resulting body: 1, 597 faces. One `execute_code` chunk per layer is comfortably 
 - `Path.create(sketchLine, ...)` fails with `InternalValidationError: Utils::getObjectPath(sketchCurve ...)` when the
   sketch lives in a sub-component created via `occurrences.addNewComponent`. Passing the proxy
   `sketchLine.createForAssemblyContext(occurrence)` works. Activating the occurrence does not help.
+- Thin-extruded runs end flat at their centre-line endpoints, which leaves a notch at outer corners and L
+  junctions when joined to an existing body. The planner extends every run by wallT/2 at both ends; a free end
+  then stops flush with the neighbouring channel (still exactly chanW wide) and all corners are square.

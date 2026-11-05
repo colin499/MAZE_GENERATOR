@@ -23,7 +23,6 @@ export function planGrid(maze: Maze, topo: Topology, phys: PhysicalParams, opts:
   const pitch = pitchOf(phys);
   const layerH = layerHOf(phys);
   const half = phys.wallT / 2;
-  const mm = (v: number): Expr => ({ mm: round(v), expr: `${round(v)} mm` });
   const groups: FeatureGroup[] = [];
   let volume = 0;
   const panels = topo.panels();
@@ -59,13 +58,18 @@ export function planGrid(maze: Maze, topo: Topology, phys: PhysicalParams, opts:
         else if (e.kind === 'tunnel') bridgeSegs.push(seg);
       }
     }
-    const toSeg = (r: { from: readonly [number, number]; to: readonly [number, number] }): readonly [Vec3, Vec3] => [P(r.from[0] * pitch, r.from[1] * pitch), P(r.to[0] * pitch, r.to[1] * pitch)];
+    // Runs are extended by half a wall thickness at both ends so corners and junctions are square
+    // (a free end then stops exactly flush with the neighbouring channel, which stays chanW wide).
+    const toSeg = (r: { from: readonly [number, number]; to: readonly [number, number] }): readonly [Vec3, Vec3] => {
+      const dx = Math.sign(r.to[0] - r.from[0]), dy = Math.sign(r.to[1] - r.from[1]);
+      return [P(r.from[0] * pitch - dx * half, r.from[1] * pitch - dy * half), P(r.to[0] * pitch + dx * half, r.to[1] * pitch + dy * half)];
+    };
     const wallRuns = mergeRuns(wallSegs);
     features.push({
       op: 'thin', name: `${body} walls`, plane, segments: wallRuns.map(toSeg),
       thickness: { mm: phys.wallT, expr: 'wallT' }, start: { mm: phys.floorT, expr: 'floorT' }, distance: { mm: phys.wallH, expr: 'wallH' }, body,
     });
-    volume += wallRuns.reduce((a, r) => a + r.length * pitch, 0) * phys.wallT * phys.wallH;
+    volume += wallRuns.reduce((a, r) => a + r.length * pitch + phys.wallT, 0) * phys.wallT * phys.wallH;
     if (bridgeSegs.length) {
       const runs = mergeRuns(bridgeSegs);
       features.push({
@@ -73,7 +77,7 @@ export function planGrid(maze: Maze, topo: Topology, phys: PhysicalParams, opts:
         thickness: { mm: phys.wallT, expr: 'wallT' }, start: { mm: phys.floorT + phys.bridgeLift, expr: 'floorT + bridgeLift' },
         distance: { mm: phys.wallH - phys.bridgeLift, expr: 'wallH - bridgeLift' }, body,
       });
-      volume += runs.reduce((a, r) => a + r.length * pitch, 0) * phys.wallT * (phys.wallH - phys.bridgeLift);
+      volume += runs.reduce((a, r) => a + r.length * pitch + phys.wallT, 0) * phys.wallT * (phys.wallH - phys.bridgeLift);
     }
 
     // round holes: dropouts (from the upper cell), traps, goal exit
@@ -120,5 +124,4 @@ export function planGrid(maze: Maze, topo: Topology, phys: PhysicalParams, opts:
   };
 }
 
-export { mm as exprMm };
-const mm = (v: number): Expr => ({ mm: round(v), expr: `${round(v)} mm` });
+export const exprMm = (v: number): Expr => ({ mm: round(v), expr: `${round(v)} mm` });
