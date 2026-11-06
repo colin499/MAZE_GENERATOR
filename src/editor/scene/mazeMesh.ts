@@ -11,16 +11,16 @@ import { mergeRuns } from '@core/layout/runs';
 import type { UnitSeg } from '@core/layout/runs';
 
 export const COLORS = {
-  floor: 0x3b4048,
-  floorLocked: 0x4a4330,
-  wall: 0xb9bec8,
-  bridge: 0xffb454,
-  trap: 0xff5a5a,
+  floor: 0x3a4454,
+  floorLocked: 0x2f4a55,
+  wall: 0xc3cad6,
+  bridge: 0xb38cf5,
+  trap: 0xf2707a,
   dropout: 0x6fb7ff,
-  goal: 0x5ad17a,
+  goal: 0x5bd39a,
   start: 0xffffff,
-  shaft: 0x15171c,
-  solution: 0x5ad17a,
+  shaft: 0x141a24,
+  solution: 0x5bd39a,
 };
 
 export interface LayerMeshes {

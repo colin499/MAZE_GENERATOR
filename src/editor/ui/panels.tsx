@@ -9,7 +9,7 @@ import type { GenParams } from '@core/generate/params';
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: 'wall', label: 'Wall', hint: 'click a wall slot to open/close it' },
-  { id: 'tunnel', label: 'Bridge', hint: 'click an open passage to hide it under a lifted wall' },
+  { id: 'tunnel', label: 'Bridge', hint: 'click an open passage to hide it under a lifted wall (shown violet)' },
   { id: 'trap', label: 'Trap', hint: 'click a dead-end cell to add a trap hole (ball falls out)' },
   { id: 'dropout', label: 'Dropout', hint: 'click a cell to toggle a hole to the layer below' },
   { id: 'start', label: 'Start', hint: 'click a cell to place the start' },

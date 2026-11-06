@@ -46,7 +46,7 @@ export class MazeViewer {
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.renderer.shadowMap.enabled = true;
     container.appendChild(this.renderer.domElement);
-    this.scene.background = new THREE.Color(0x15171c);
+    this.scene.background = new THREE.Color(0x1b2230);
     this.camera = new THREE.PerspectiveCamera(40, 1, 1, 5000);
     this.camera.up.set(0, 0, 1);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -58,7 +58,7 @@ export class MazeViewer {
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     this.scene.add(hemi, key);
-    this.highlight = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 0.45, depthTest: false }));
+    this.highlight = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x35c9c0, transparent: true, opacity: 0.5, depthTest: false }));
     this.highlight.visible = false;
     this.highlight.renderOrder = 10;
     this.scene.add(this.highlight);
