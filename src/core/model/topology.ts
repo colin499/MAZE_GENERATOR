@@ -1,12 +1,16 @@
 import type { CellId } from './ids';
-import type { Frame, Vec2 } from '../math/vec';
+import type { Frame, Vec2, Vec3 } from '../math/vec';
 
 /** Serialisable description of a topology; cells and adjacency are derived from it. */
 export type TopologySpec =
   | { readonly kind: 'flat'; readonly w: number; readonly h: number }
   | { readonly kind: 'stacked'; readonly w: number; readonly h: number; readonly layers: number }
   | { readonly kind: 'cube'; readonly n: number }
+  | { readonly kind: 'sphere'; readonly n: number }
   | { readonly kind: 'cylinder'; readonly around: number; readonly along: number };
+
+/** Topologies whose maze lies on the inside of a closed (or tube) shell; the player rotates the object. */
+export const isShell = (k: TopologyKind): boolean => k === 'cube' || k === 'sphere' || k === 'cylinder';
 
 export type TopologyKind = TopologySpec['kind'];
 
@@ -28,6 +32,55 @@ export interface PanelInfo {
   readonly w: number;
   readonly h: number;
   readonly layer: number;
+  /** The u axis wraps around (cylinder). */
+  readonly wrapU?: boolean;
+}
+
+/** Physical sizes a surface needs (mm); a subset of layout/PhysicalParams. */
+export interface SurfaceParams {
+  readonly chanW: number;
+  readonly wallT: number;
+  readonly floorT: number;
+  readonly wallH: number;
+  readonly ballDia: number;
+  readonly tubeDia: number;
+  readonly cubeSide: number;
+  readonly sphereDia: number;
+}
+
+export interface SurfaceFrame {
+  /** Unit tangents along +u and +v, and the unit normal pointing from the floor toward the ball. */
+  readonly tu: Vec3;
+  readonly tv: Vec3;
+  readonly n: Vec3;
+}
+
+/**
+ * Geometry of a topology in mm: maps panel grid coordinates to model space. Renderers, the physics
+ * and pick targets only use this, so a new shape needs nothing but a `point` function.
+ */
+export interface Surface {
+  /** Model point for (u, v) on a panel at height h above the floor surface (toward the ball). */
+  point(panel: number, u: number, v: number, h: number): Vec3;
+  frame(panel: number, u: number, v: number): SurfaceFrame;
+  /** mm per grid unit along u and v at (u, v), measured at height h. */
+  metric(panel: number, u: number, v: number, h: number): readonly [number, number];
+  /** The ball is enclosed: render with a cutaway and control by rotating the object. */
+  readonly closed: boolean;
+  /** Walls bend with the surface (sample runs finely). */
+  readonly curved: boolean;
+  readonly bbox: { readonly min: Vec3; readonly max: Vec3 };
+  /** Distance (mm) from a panel edge at which the ball centre transfers to the neighbouring panel (concave corners). */
+  readonly edgeInset: number;
+}
+
+/** Where a point just outside a panel lands on the neighbouring panel, with the 2×2 map for directions. */
+export interface PanelCrossing {
+  readonly panel: number;
+  readonly u: number;
+  readonly v: number;
+  /** (du', dv') = (m[0]·du + m[1]·dv, m[2]·du + m[3]·dv). */
+  readonly m: readonly [number, number, number, number];
 }
 
 /** The physical numbers a topology needs to place its panels in space (mm). */
@@ -55,8 +108,45 @@ export interface Topology {
   panels(): readonly PanelInfo[];
   /** Placement of a panel's grid in mm: origin at grid corner (0,0); x, y are unit vectors along u, v. */
   panelFrame(panel: number, m: PanelMetrics): Frame;
+  /** Real geometry, or the flat unfolded net when `unfolded` (for editing). */
+  surface(p: SurfaceParams, unfolded?: boolean): Surface;
+  /** Map a point just outside a panel onto its neighbour; null at a true boundary. */
+  crossPanel(panel: number, u: number, v: number): PanelCrossing | null;
   allowedStart(id: CellId): boolean;
   allowedGoal(id: CellId): boolean;
+}
+
+/** Build a Surface from a point function; frame and metric come from finite differences. */
+export function surfaceFromPoint(
+  point: Surface['point'],
+  opts: { closed: boolean; curved: boolean; bbox: Surface['bbox']; edgeInset: number },
+): Surface {
+  const EPS = 1e-3;
+  const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const len = (a: Vec3) => Math.hypot(a[0], a[1], a[2]);
+  const unit = (a: Vec3): Vec3 => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  return {
+    point,
+    closed: opts.closed,
+    curved: opts.curved,
+    bbox: opts.bbox,
+    edgeInset: opts.edgeInset,
+    frame(panel, u, v) {
+      const p0 = point(panel, u, v, 0);
+      const tu = unit(sub(point(panel, u + EPS, v, 0), p0));
+      const tv = unit(sub(point(panel, u, v + EPS, 0), p0));
+      const n = unit(sub(point(panel, u, v, EPS), p0));
+      // keep the frame orthonormal even where the finite differences are slightly off
+      const n2 = unit(cross(tu, tv));
+      const sign = n2[0] * n[0] + n2[1] * n[1] + n2[2] * n[2] >= 0 ? 1 : -1;
+      return { tu, tv, n: [n2[0] * sign, n2[1] * sign, n2[2] * sign] };
+    },
+    metric(panel, u, v, h) {
+      const p0 = point(panel, u, v, h);
+      return [len(sub(point(panel, u + EPS, v, h), p0)) / EPS, len(sub(point(panel, u, v + EPS, h), p0)) / EPS];
+    },
+  };
 }
 
 /** Grid-corner segment of the wall on `side` of a cell, in panel units. */

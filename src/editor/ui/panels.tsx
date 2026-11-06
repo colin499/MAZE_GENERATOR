@@ -6,6 +6,7 @@ import { emitFusionChunks, emitFusionScript } from '@core/export/fusion/emit';
 import { buildPlan } from '@core/layout/planner';
 import type { PhysicalParams } from '@core/layout/physical';
 import type { GenParams } from '@core/generate/params';
+import { shellChannel } from '@core/layout/physical';
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: 'wall', label: 'Wall', hint: 'click a wall slot to open/close it' },
@@ -62,14 +63,24 @@ export function GeneratePanel(): JSX.Element {
       <h2>Generate</h2>
       <div class="row">
         <label>Type</label>
-        <select value={s.kind} onChange={(e) => S.updateSettings({ kind: (e.target as HTMLSelectElement).value as 'flat' | 'stacked' })}>
+        <select value={s.kind} onChange={(e) => S.updateSettings({ kind: (e.target as HTMLSelectElement).value as S.ShapeKind })}>
           <option value="stacked">Stacked layers</option>
           <option value="flat">Flat board</option>
+          <option value="cylinder">Cylinder (inside a tube)</option>
+          <option value="cube">Cube (inside a hollow cube)</option>
+          <option value="sphere">Sphere (inside a hollow sphere)</option>
         </select>
       </div>
-      <Num label="Columns" value={s.w} min={2} max={60} onChange={(w) => S.updateSettings({ w: Math.max(2, Math.round(w)) })} />
-      <Num label="Rows" value={s.h} min={2} max={60} onChange={(h) => S.updateSettings({ h: Math.max(2, Math.round(h)) })} />
+      {(s.kind === 'flat' || s.kind === 'stacked') && <>
+        <Num label="Columns" value={s.w} min={2} max={60} onChange={(w) => S.updateSettings({ w: Math.max(2, Math.round(w)) })} />
+        <Num label="Rows" value={s.h} min={2} max={60} onChange={(h) => S.updateSettings({ h: Math.max(2, Math.round(h)) })} />
+      </>}
       {s.kind === 'stacked' && <Num label="Layers" value={s.layers} min={2} max={12} onChange={(l) => S.updateSettings({ layers: Math.max(2, Math.round(l)) })} />}
+      {s.kind === 'cylinder' && <>
+        <Num label="Cells around" value={s.around} min={3} max={40} onChange={(v) => S.updateSettings({ around: Math.max(3, Math.round(v)) })} />
+        <Num label="Cells along" value={s.along} min={2} max={80} onChange={(v) => S.updateSettings({ along: Math.max(2, Math.round(v)) })} />
+      </>}
+      {(s.kind === 'cube' || s.kind === 'sphere') && <Num label="Cells per face" value={s.n} min={2} max={14} onChange={(v) => S.updateSettings({ n: Math.max(2, Math.round(v)) })} />}
       <div class="row">
         <label>Seed</label>
         <input type="text" value={s.seed} onChange={(e) => S.updateSettings({ seed: (e.target as HTMLInputElement).value })} />
@@ -101,6 +112,24 @@ export function LayersPanel(): JSX.Element {
   const active = S.activeLayer.value;
   const modes = S.effectiveLayerModes.value;
   const playing = !!S.play.value;
+  if (S.isShellMaze.value) {
+    return (
+      <section class="layers">
+        <h2>View</h2>
+        <div class="btns">
+          <button class={!S.unfolded.value ? 'active' : ''} onClick={() => (S.unfolded.value = false)} title="The real shape">3D</button>
+          <button class={S.unfolded.value ? 'active' : ''} onClick={() => (S.unfolded.value = true)} disabled={playing} title="Flattened net of the surface, easier to edit">Unfolded</button>
+          <button class={S.cutaway.value ? 'active' : ''} onClick={() => (S.cutaway.value = !S.cutaway.value)} title="Hide the half nearest the camera so you can see inside">Cutaway</button>
+        </div>
+        <p class="hint">{t.spec.kind === 'cylinder' ? 'The maze is on the inside of the tube; the ball enters at one end and must reach the other.' : 'The maze is on the inside of the shell; the ball sits on the inner surface and you turn the whole object. Faces are numbered 0–5.'} The cutaway shows the far half from inside.</p>
+        <div class="row" style="margin-top:6px">
+          <label>Locked cells</label>
+          <span>{S.maze.value.locked.size}</span>
+          {S.maze.value.locked.size > 0 && <button onClick={S.clearLocks}>Clear</button>}
+        </div>
+      </section>
+    );
+  }
   return (
     <section class="layers">
       <h2>Layers</h2>
@@ -166,7 +195,7 @@ export function PlayPanel(): JSX.Element {
       <div class="checks">
         <Check label="Autopilot (demo run along the solution)" k="autopilot" />
         <Check label="Camera follows the ball" k="follow" />
-        <Check label="X-ray layers above the ball" k="xray" />
+        {!S.isShellMaze.value && <Check label="X-ray layers above the ball" k="xray" />}
       </div>
       <div class="row">
         <label>Camera</label>
@@ -177,14 +206,18 @@ export function PlayPanel(): JSX.Element {
         </select>
       </div>
       {p.view === 'ball' && <Range label="Cells in view" value={p.zoomCells} min={4} max={30} step={1} onChange={(v) => S.updatePlay({ zoomCells: v })} />}
-      <Range label="Max tilt" value={p.maxTiltDeg} min={2} max={15} step={0.5} onChange={(v) => S.updatePlay({ maxTiltDeg: v })} fmt={(v) => `${v}°`} />
+      {S.isShellMaze.value
+        ? <Range label="Turn speed" value={p.turnDegPerS} min={15} max={180} step={5} onChange={(v) => S.updatePlay({ turnDegPerS: v })} fmt={(v) => `${v}°/s`} />
+        : <Range label="Max tilt" value={p.maxTiltDeg} min={2} max={15} step={0.5} onChange={(v) => S.updatePlay({ maxTiltDeg: v })} fmt={(v) => `${v}°`} />}
       <Range label="Sim speed" value={p.speed} min={0.25} max={2} step={0.25} onChange={(v) => S.updatePlay({ speed: v })} fmt={(v) => `${v}×`} />
       {st && (
         <table class="metrics"><tbody>
           <tr><td>State</td><td>{st.phase}</td></tr>
           <tr><td>Layer</td><td>{st.layer}</td></tr>
           <tr><td>Time</td><td>{st.elapsed.toFixed(1)} s</td></tr>
-          <tr><td>Tilt x / y</td><td>{(st.tiltX * 180 / Math.PI).toFixed(1)}° / {(st.tiltY * 180 / Math.PI).toFixed(1)}°</td></tr>
+          {S.isShellMaze.value
+            ? <tr><td>Floor slope under ball</td><td>{(st.tiltX * 180 / Math.PI).toFixed(1)}°</td></tr>
+            : <tr><td>Tilt x / y</td><td>{(st.tiltX * 180 / Math.PI).toFixed(1)}° / {(st.tiltY * 180 / Math.PI).toFixed(1)}°</td></tr>}
           <tr><td>Dropouts taken</td><td>{st.drops}</td></tr>
           <tr><td>Traps hit</td><td>{st.traps}</td></tr>
         </tbody></table>
@@ -198,6 +231,8 @@ export function PlayPanel(): JSX.Element {
 
 export function PhysicalPanel(): JSX.Element {
   const p = S.phys.value;
+  const kind = S.maze.value.topology.kind;
+  const ch = shellChannel(p, S.maze.value.topology);
   const f = (k: keyof PhysicalParams, label: string, step = 0.1) => <Num label={label} value={p[k]} step={step} min={0} onChange={(v) => S.updatePhys({ [k]: v } as Partial<PhysicalParams>)} />;
   return (
     <section>
@@ -209,8 +244,13 @@ export function PhysicalPanel(): JSX.Element {
       {f('wallH', 'Wall height')}
       {f('holeDia', 'Hole diameter')}
       {f('bridgeLift', 'Bridge gap')}
+      {kind === 'cylinder' && f('tubeDia', 'Tube inner Ø')}
+      {kind === 'cube' && f('cubeSide', 'Cube inner side')}
+      {kind === 'sphere' && f('sphereDia', 'Sphere inner Ø')}
       {S.physIssues.value.map((i, n) => <div key={n} class={`diag ${i.level}`}>{i.message}</div>)}
-      <p class="hint">Pitch {(p.chanW + p.wallT).toFixed(2)} mm · layer height {(p.floorT + p.wallH).toFixed(2)} mm. Wall/floor heights and hole sizes stay live parameters in Fusion; the layout pitch is baked at export.</p>
+      {ch
+        ? <p class="hint">Channel between walls at the ball: {ch.min.toFixed(1)}{ch.max - ch.min > 0.05 ? `–${ch.max.toFixed(1)}` : ''} mm ({ch.what}). The shell thickness is the floor thickness; walls are ribs on the inside.</p>
+        : <p class="hint">Pitch {(p.chanW + p.wallT).toFixed(2)} mm · layer height {(p.floorT + p.wallH).toFixed(2)} mm. Wall/floor heights and hole sizes stay live parameters in Fusion; the layout pitch is baked at export.</p>}
     </section>
   );
 }

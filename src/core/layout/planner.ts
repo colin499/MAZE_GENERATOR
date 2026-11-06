@@ -4,6 +4,7 @@ import type { PhysicalParams } from './physical';
 import type { BuildPlan } from './plan';
 import { planGrid } from './planners/grid';
 import type { GridPlanOptions } from './planners/grid';
+import { planShell } from './planners/shell';
 
 /** Dispatch to the planner for the maze's topology. */
 export function buildPlan(maze: Maze, topo: Topology, phys: PhysicalParams, opts: GridPlanOptions = {}): BuildPlan {
@@ -11,7 +12,9 @@ export function buildPlan(maze: Maze, topo: Topology, phys: PhysicalParams, opts
     case 'flat':
     case 'stacked':
       return planGrid(maze, topo, phys, opts);
-    default:
-      throw new Error(`no planner for topology '${topo.spec.kind}'`);
+    case 'cylinder':
+    case 'cube':
+    case 'sphere':
+      return planShell(maze, topo, phys, opts);
   }
 }

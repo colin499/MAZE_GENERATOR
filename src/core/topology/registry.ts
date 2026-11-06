@@ -1,5 +1,7 @@
 import type { Topology, TopologySpec } from '../model/topology';
 import { GridTopology } from './grid';
+import { CylinderTopology } from './cylinder';
+import { CubeTopology } from './cube';
 
 const cache = new Map<string, Topology>();
 
@@ -19,8 +21,12 @@ export function createTopology(spec: TopologySpec): Topology {
       t = new GridTopology(spec);
       break;
     case 'cube':
+    case 'sphere':
+      t = new CubeTopology(spec);
+      break;
     case 'cylinder':
-      throw new Error(`topology '${spec.kind}' is not implemented yet`);
+      t = new CylinderTopology(spec);
+      break;
   }
   cache.set(key, t);
   return t;

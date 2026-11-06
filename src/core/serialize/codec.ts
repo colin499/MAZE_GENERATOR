@@ -51,7 +51,8 @@ function isSpec(x: unknown): x is TopologySpec {
   switch (o['kind']) {
     case 'flat': return typeof o['w'] === 'number' && typeof o['h'] === 'number';
     case 'stacked': return typeof o['w'] === 'number' && typeof o['h'] === 'number' && typeof o['layers'] === 'number';
-    case 'cube': return typeof o['n'] === 'number';
+    case 'cube':
+    case 'sphere': return typeof o['n'] === 'number';
     case 'cylinder': return typeof o['around'] === 'number' && typeof o['along'] === 'number';
     default: return false;
   }

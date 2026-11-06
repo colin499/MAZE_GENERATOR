@@ -32,6 +32,8 @@ function Viewport(): JSX.Element {
         solution: S.showSolution.value ? S.solution.value.path : null,
         heat: S.showHeat.value ? S.report.value.metrics.branchDepthOf : null,
         pickMode,
+        unfolded: S.unfolded.value,
+        cutaway: S.cutaway.value,
         play: S.play.value,
         resetTick: S.resetTick.value,
       });
@@ -69,8 +71,9 @@ function Viewport(): JSX.Element {
     return () => { stop(); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', blur); viewer.dispose(); };
   }, []);
   const playing = S.play.value;
+  const shell = S.isShellMaze.value;
   const hud = playing
-    ? (playing.autopilot ? 'autopilot is driving · R reset · Esc stop · right-drag to orbit' : 'arrows / WASD or left-drag to tilt · R reset · Esc stop · right-drag to orbit')
+    ? (playing.autopilot ? 'autopilot is driving · R reset · Esc stop · right-drag to orbit' : `arrows / WASD or left-drag to ${shell ? 'turn the maze' : 'tilt'} · R reset · Esc stop · right-drag to orbit`)
     : (S.hoverInfo.value || 'drag to orbit · scroll to zoom · f fit · t top view · p play');
   return (
     <main>

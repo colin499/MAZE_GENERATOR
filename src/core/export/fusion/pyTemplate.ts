@@ -53,12 +53,45 @@ def body_named(comp, name):
             return b
     return None
 
+def marker_exists(comp, marker):
+    if marker.startswith('feature:'):
+        name = marker[len('feature:'):]
+        for i in range(comp.features.count):
+            if comp.features.item(i).name == name:
+                return True
+        return False
+    return body_named(comp, marker) is not None
+
+BASE = {'XY': lambda c: c.xYConstructionPlane, 'XZ': lambda c: c.xZConstructionPlane, 'YZ': lambda c: c.yZConstructionPlane}
+AXIS = {'X': lambda c: c.xConstructionAxis, 'Y': lambda c: c.yConstructionAxis, 'Z': lambda c: c.zConstructionAxis}
+FLIP_AXIS = {'XY': 'X', 'XZ': 'X', 'YZ': 'Y'}   # an axis lying in the base plane, to turn it over
+ANGLE_BASE = {'X': 'XY', 'Y': 'XY', 'Z': 'XZ'}  # base plane containing each axis
+
 def plane_for(comp, spec):
+    planes = comp.constructionPlanes
     if spec['kind'] == 'xyOffset':
-        inp = comp.constructionPlanes.createInput()
+        inp = planes.createInput()
         inp.setByOffset(comp.xYConstructionPlane, _vi(spec['offset']['expr']))
-        pl = comp.constructionPlanes.add(inp)
+        pl = planes.add(inp)
         pl.name = 'plane ' + spec['offset']['expr']
+        return pl
+    if spec['kind'] == 'offset':
+        base = BASE[spec['base']](comp)
+        if spec['flip']:
+            inp = planes.createInput()
+            inp.setByAngle(AXIS[FLIP_AXIS[spec['base']]](comp), _vi('180 deg'), base)
+            base = planes.add(inp)
+            base.name = spec['base'] + ' flipped'
+        inp = planes.createInput()
+        inp.setByOffset(base, _vi(spec['offset']['expr']))
+        pl = planes.add(inp)
+        pl.name = spec['base'] + ('-' if spec['flip'] else '+') + ' ' + spec['offset']['expr']
+        return pl
+    if spec['kind'] == 'angle':
+        inp = planes.createInput()
+        inp.setByAngle(AXIS[spec['axis']](comp), _vi('%s deg' % spec['angleDeg']), BASE[ANGLE_BASE[spec['axis']]](comp))
+        pl = planes.add(inp)
+        pl.name = 'about %s %s deg' % (spec['axis'], spec['angleDeg'])
         return pl
     raise RuntimeError('unknown plane kind ' + spec['kind'])
 
@@ -143,7 +176,127 @@ def do_holes(comp, f):
     sk.isVisible = False
     return feat
 
-DO = {'extrude': do_extrude, 'thin': do_thin, 'holes': do_holes}
+def all_profiles(sk):
+    profs = adsk.core.ObjectCollection.create()
+    for i in range(sk.profiles.count):
+        profs.add(sk.profiles.item(i))
+    return profs
+
+def profile_nearest_area(sk, area_mm2):
+    best, best_d = None, None
+    for i in range(sk.profiles.count):
+        pr = sk.profiles.item(i)
+        d = abs(pr.areaProperties().area * 100.0 - area_mm2)
+        if best is None or d < best_d:
+            best, best_d = pr, d
+    return best
+
+def circle_with_dia(sk, center, expr, mm):
+    c = sk.sketchCurves.sketchCircles.addByCenterRadius(sk.modelToSketchSpace(_p3(center)), mm * MM / 2.0)
+    anchor = sk.modelToSketchSpace(_p3([center[0] + mm * 0.6, center[1] + mm * 0.6, center[2]]))
+    dim = sk.sketchDimensions.addDiameterDimension(c, anchor)
+    dim.parameter.expression = expr
+    return c
+
+def do_ring(comp, f):
+    plane = plane_for(comp, f['plane'])
+    sk = new_sketch(comp, plane, f['name'], profiles=True)
+    circle_with_dia(sk, f['center'], f['innerDia']['expr'], f['innerDia']['mm'])
+    circle_with_dia(sk, f['center'], f['outerDia']['expr'], f['outerDia']['mm'])
+    finish_sketch(sk)
+    ri, ro = f['innerDia']['mm'] / 2.0, f['outerDia']['mm'] / 2.0
+    prof = profile_nearest_area(sk, 3.141592653589793 * (ro * ro - ri * ri))
+    inp = comp.features.extrudeFeatures.createInput(prof, OPS[f['mode']])
+    apply_extents(inp, f)
+    if f['mode'] != 'new':
+        inp.participantBodies = [body_named(comp, f['body'])]
+    feat = comp.features.extrudeFeatures.add(inp)
+    feat.name = f['name']
+    if f['mode'] == 'new':
+        feat.bodies.item(0).name = f['body']
+    sk.isVisible = False
+    return feat
+
+def do_disk(comp, f):
+    plane = plane_for(comp, f['plane'])
+    sk = new_sketch(comp, plane, f['name'], profiles=True)
+    circle_with_dia(sk, f['center'], f['diameter']['expr'], f['diameter']['mm'])
+    area = 3.141592653589793 * (f['diameter']['mm'] / 2.0) ** 2
+    for h in f['holes']:
+        circle_with_dia(sk, h['center'], h['diameter']['expr'], h['diameter']['mm'])
+        area -= 3.141592653589793 * (h['diameter']['mm'] / 2.0) ** 2
+    finish_sketch(sk)
+    prof = profile_nearest_area(sk, area)
+    inp = comp.features.extrudeFeatures.createInput(prof, OPS[f['mode']])
+    apply_extents(inp, f)
+    if f['mode'] != 'new':
+        inp.participantBodies = [body_named(comp, f['body'])]
+    feat = comp.features.extrudeFeatures.add(inp)
+    feat.name = f['name']
+    if f['mode'] == 'new':
+        feat.bodies.item(0).name = f['body']
+    sk.isVisible = False
+    return feat
+
+def do_sectors(comp, f):
+    plane = plane_for(comp, f['plane'])
+    sk = new_sketch(comp, plane, f['name'], profiles=True)
+    S = lambda p: sk.modelToSketchSpace(_p3(p))
+    arcs, lines = sk.sketchCurves.sketchArcs, sk.sketchCurves.sketchLines
+    for s in f['sectors']:
+        arcs.addByThreePoints(S(s['innerStart']), S(s['innerMid']), S(s['innerEnd']))
+        arcs.addByThreePoints(S(s['outerStart']), S(s['outerMid']), S(s['outerEnd']))
+        lines.addByTwoPoints(S(s['innerStart']), S(s['outerStart']))
+        lines.addByTwoPoints(S(s['innerEnd']), S(s['outerEnd']))
+    finish_sketch(sk)
+    inp = comp.features.extrudeFeatures.createInput(all_profiles(sk), OPS['join'])
+    inp.setSymmetricExtent(_vi(f['thickness']['expr']), True)
+    inp.participantBodies = [body_named(comp, f['body'])]
+    feat = comp.features.extrudeFeatures.add(inp)
+    feat.name = f['name']
+    sk.isVisible = False
+    return feat
+
+def do_radial_holes(comp, f):
+    plane = plane_for(comp, f['plane'])
+    feats = []
+    for k, quad in enumerate(f['holes']):
+        sk = new_sketch(comp, plane, '%s %d' % (f['name'], k), profiles=True)
+        S = lambda p: sk.modelToSketchSpace(_p3(p))
+        lines = sk.sketchCurves.sketchLines
+        edges = [lines.addByTwoPoints(S(quad[i]), S(quad[(i + 1) % 4])) for i in range(4)]
+        finish_sketch(sk)
+        inp = comp.features.revolveFeatures.createInput(sk.profiles.item(0), edges[0], OPS['cut'])
+        inp.setAngleExtent(False, _vi('360 deg'))
+        inp.participantBodies = [body_named(comp, f['body'])]
+        feat = comp.features.revolveFeatures.add(inp)
+        feat.name = '%s %d' % (f['name'], k)
+        sk.isVisible = False
+        feats.append(feat)
+    return feats[-1] if feats else None
+
+def do_revolve(comp, f):
+    plane = plane_for(comp, f['plane'])
+    sk = new_sketch(comp, plane, f['name'], profiles=True)
+    S = lambda p: sk.modelToSketchSpace(_p3(p))
+    for a, b in f['lines']:
+        sk.sketchCurves.sketchLines.addByTwoPoints(S(a), S(b))
+    for a, m, b in f['arcs']:
+        sk.sketchCurves.sketchArcs.addByThreePoints(S(a), S(m), S(b))
+    finish_sketch(sk)
+    inp = comp.features.revolveFeatures.createInput(all_profiles(sk), comp.zConstructionAxis, OPS[f['mode']])
+    inp.setAngleExtent(False, _vi('360 deg'))
+    if f['mode'] != 'new':
+        inp.participantBodies = [body_named(comp, f['body'])]
+    feat = comp.features.revolveFeatures.add(inp)
+    feat.name = f['name']
+    if f['mode'] == 'new':
+        feat.bodies.item(0).name = f['body']
+    sk.isVisible = False
+    return feat
+
+DO = {'extrude': do_extrude, 'thin': do_thin, 'holes': do_holes, 'ring': do_ring, 'disk': do_disk,
+      'sectors': do_sectors, 'radialHoles': do_radial_holes, 'revolve': do_revolve}
 
 def build(design, plan, groups):
     t0 = time.perf_counter()
@@ -152,7 +305,7 @@ def build(design, plan, groups):
     timeline = design.timeline
     built, skipped = [], []
     for g in groups:
-        if body_named(comp, g['marker']) is not None:
+        if marker_exists(comp, g['marker']):
             skipped.append(g['name'])
             continue
         start_index = timeline.count

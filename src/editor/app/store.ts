@@ -17,7 +17,7 @@ import { DEFAULT_PHYSICAL, validatePhysical } from '@core/layout/physical';
 import type { PhysicalParams } from '@core/layout/physical';
 import { decodeMaze, encodeMaze } from '@core/serialize/codec';
 import { setPassage, togglePassage, withGoal, withLocked, withStart, withTrap } from '@core/model/ops';
-import { relation } from '@core/model/topology';
+import { isShell, relation } from '@core/model/topology';
 import { edgeKey } from '@core/model/ids';
 import type { LayerMode } from '../scene/mazeMesh';
 import type { PlaySettings, PlayStatus } from '../scene/viewer';
@@ -25,26 +25,46 @@ export type { LayerMode, PlaySettings, PlayStatus };
 
 export type Tool = 'wall' | 'tunnel' | 'trap' | 'dropout' | 'start' | 'goal' | 'lock';
 
+export type ShapeKind = TopologySpec['kind'];
+
 export interface GenSettings {
-  readonly kind: 'flat' | 'stacked';
+  readonly kind: ShapeKind;
   readonly w: number;
   readonly h: number;
   readonly layers: number;
+  /** Cylinder: cells around the tube and along its axis. */
+  readonly around: number;
+  readonly along: number;
+  /** Cube / sphere: cells per face. */
+  readonly n: number;
   readonly seed: string;
   readonly params: GenParams;
 }
 
+const SHAPE_DEFAULTS = { w: 12, h: 12, layers: 3, around: 9, along: 8, n: 4 };
+
 const AUTOSAVE_KEY = 'maze-builder:autosave:v1';
 
 function specOf(s: GenSettings): TopologySpec {
-  return s.kind === 'flat' ? { kind: 'flat', w: s.w, h: s.h } : { kind: 'stacked', w: s.w, h: s.h, layers: s.layers };
+  switch (s.kind) {
+    case 'flat': return { kind: 'flat', w: s.w, h: s.h };
+    case 'stacked': return { kind: 'stacked', w: s.w, h: s.h, layers: s.layers };
+    case 'cylinder': return { kind: 'cylinder', around: s.around, along: s.along };
+    case 'cube': return { kind: 'cube', n: s.n };
+    case 'sphere': return { kind: 'sphere', n: s.n };
+  }
 }
 
 function settingsOf(m: Maze): GenSettings {
   const t = m.topology;
-  if (t.kind === 'flat') return { kind: 'flat', w: t.w, h: t.h, layers: 1, seed: m.seed, params: m.gen };
-  if (t.kind === 'stacked') return { kind: 'stacked', w: t.w, h: t.h, layers: t.layers, seed: m.seed, params: m.gen };
-  throw new Error(`unsupported topology ${t.kind}`);
+  const base = { ...SHAPE_DEFAULTS, seed: m.seed, params: m.gen };
+  switch (t.kind) {
+    case 'flat': return { ...base, kind: 'flat', w: t.w, h: t.h, layers: 1 };
+    case 'stacked': return { ...base, kind: 'stacked', w: t.w, h: t.h, layers: t.layers };
+    case 'cylinder': return { ...base, kind: 'cylinder', around: t.around, along: t.along };
+    case 'cube': return { ...base, kind: 'cube', n: t.n };
+    case 'sphere': return { ...base, kind: 'sphere', n: t.n };
+  }
 }
 
 function initialMaze(): Maze {
@@ -69,7 +89,11 @@ export const activeLayer = signal<number>(-1); // -1 = all layers
 /** Explicit display mode per layer; the active layer is always solid. */
 export const layerModes = signal<Readonly<Record<number, LayerMode>>>({});
 export const play = signal<PlaySettings | null>(null);
-export const playPrefs = signal<PlaySettings>({ autopilot: false, follow: true, xray: true, maxTiltDeg: 7, speed: 1, view: 'ball', zoomCells: 9 });
+export const playPrefs = signal<PlaySettings>({ autopilot: false, follow: true, xray: true, maxTiltDeg: 7, turnDegPerS: 60, speed: 1, view: 'ball', zoomCells: 9 });
+/** Shells: show the unfolded net for editing. */
+export const unfolded = signal(false);
+/** Shells: clip away the half nearest the camera so the inside is visible. */
+export const cutaway = signal(true);
 export const playStatus = signal<PlayStatus | null>(null);
 export const playLog = signal<readonly string[]>([]);
 export const resetTick = signal(0);
@@ -88,7 +112,8 @@ export const topo = computed<Topology>(() => createTopology(maze.value.topology)
 export const solution = computed<Solution>(() => solve(maze.value, topo.value));
 export const diagnostics = computed<readonly Diagnostic[]>(() => [...genDiagnostics.value, ...validate(maze.value, topo.value)]);
 export const report = computed<DifficultyReport>(() => scoreMaze(maze.value, topo.value, 48));
-export const physIssues = computed(() => validatePhysical(phys.value));
+export const physIssues = computed(() => validatePhysical(phys.value, maze.value.topology));
+export const isShellMaze = computed(() => isShell(maze.value.topology.kind));
 export const effectiveLayerModes = computed<LayerMode[]>(() => {
   const n = topo.value.layerCount, a = activeLayer.value, m = layerModes.value;
   return Array.from({ length: n }, (_, k) => (k === a ? 'solid' : m[k] ?? 'solid'));

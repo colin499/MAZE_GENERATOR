@@ -1,3 +1,5 @@
+import type { TopologySpec } from '../model/topology';
+import { createTopology } from '../topology/registry';
 /** Physical dimensions in millimetres. These become Fusion user parameters. */
 export interface PhysicalParams {
   readonly ballDia: number;
@@ -11,6 +13,12 @@ export interface PhysicalParams {
   readonly holeDia: number;
   /** Gap under a bridge wall (hidden passage). */
   readonly bridgeLift: number;
+  /** Inner diameter of a cylinder maze tube (the ball rolls on the inside). */
+  readonly tubeDia: number;
+  /** Inner side length of a cube maze shell. */
+  readonly cubeSide: number;
+  /** Inner diameter of a sphere maze shell. */
+  readonly sphereDia: number;
 }
 
 export const DEFAULT_PHYSICAL: PhysicalParams = {
@@ -21,6 +29,9 @@ export const DEFAULT_PHYSICAL: PhysicalParams = {
   wallH: 9,
   holeDia: 7,
   bridgeLift: 7,
+  tubeDia: 30.1,
+  cubeSide: 60,
+  sphereDia: 60,
 };
 
 /** Grid pitch: wall centre-line to wall centre-line. */
@@ -33,11 +44,19 @@ export interface PhysicalIssue {
   readonly message: string;
 }
 
-export function validatePhysical(p: PhysicalParams): PhysicalIssue[] {
+export function validatePhysical(p: PhysicalParams, spec?: TopologySpec): PhysicalIssue[] {
   const out: PhysicalIssue[] = [];
   const pos = (k: keyof PhysicalParams) => { if (!(p[k] > 0) || !Number.isFinite(p[k])) out.push({ level: 'error', message: `${k} must be a positive number` }); };
   (Object.keys(p) as (keyof PhysicalParams)[]).forEach(pos);
   if (out.length) return out;
+  if (spec) {
+    const ch = shellChannel(p, spec);
+    if (ch) {
+      if (ch.min <= p.ballDia) out.push({ level: 'error', message: `${ch.what} leaves only ${ch.min.toFixed(1)} mm between walls at the ball; the ball (${p.ballDia} mm) cannot pass — use fewer cells or a bigger shell` });
+      else if (ch.min < p.ballDia + 1) out.push({ level: 'warning', message: `${ch.what} leaves ${ch.min.toFixed(1)} mm between walls at the ball (tight)` });
+      if (ch.wallLimit !== null && p.wallH >= ch.wallLimit) out.push({ level: 'error', message: `wallH must stay below ${ch.wallLimit.toFixed(1)} mm or the walls meet in the middle of the shell` });
+    }
+  }
   if (p.chanW <= p.ballDia) out.push({ level: 'error', message: 'chanW must exceed ballDia or the ball cannot roll' });
   else if (p.chanW < p.ballDia + 1) out.push({ level: 'warning', message: 'chanW gives less than 0.5 mm clearance per side' });
   if (p.holeDia <= p.ballDia) out.push({ level: 'error', message: 'holeDia must exceed ballDia or the ball never falls' });
@@ -48,6 +67,39 @@ export function validatePhysical(p: PhysicalParams): PhysicalIssue[] {
   if (p.wallT < 1.2) out.push({ level: 'warning', message: 'wallT below 1.2 mm is fragile for FDM printing' });
   if (p.floorT < 1.2) out.push({ level: 'warning', message: 'floorT below 1.2 mm is fragile for FDM printing' });
   return out;
+}
+
+/** Narrowest channel at the ball's height on a shell topology (walls are radial, so channels narrow inward). */
+export function shellChannel(p: PhysicalParams, spec: TopologySpec): { min: number; max: number; what: string; wallLimit: number | null } | null {
+  const r = p.ballDia / 2;
+  switch (spec.kind) {
+    case 'cylinder': {
+      const R = p.tubeDia / 2;
+      const arc = (2 * Math.PI * (R - r)) / spec.around - p.wallT; // around; along is chanW
+      return { min: Math.min(arc, p.chanW), max: Math.max(arc, p.chanW), what: `${spec.around} cells around a ${p.tubeDia} mm tube`, wallLimit: R - r };
+    }
+    case 'cube': {
+      const cell = p.cubeSide / spec.n;
+      return { min: cell - p.wallT, max: cell - p.wallT, what: `${spec.n} cells per ${p.cubeSide} mm face`, wallLimit: p.cubeSide / 2 - r };
+    }
+    case 'sphere': {
+      // equiangular cubed sphere: sample the metric at the ball's height; the channel across a wall is the
+      // cell pitch times the sine of the angle between the grid directions (cells are rhombi near corners)
+      const surf = createTopology(spec).surface(p);
+      let min = Infinity, max = 0;
+      const n = spec.n;
+      for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) {
+        const u = 0.5 + ((n - 1) * i) / 4, v = 0.5 + ((n - 1) * j) / 4;
+        const [pu, pv] = surf.metric(0, u, v, r);
+        const f = surf.frame(0, u, v);
+        const cosA = f.tu[0] * f.tv[0] + f.tu[1] * f.tv[1] + f.tu[2] * f.tv[2];
+        const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+        for (const w of [pu * sinA - p.wallT, pv * sinA - p.wallT]) { min = Math.min(min, w); max = Math.max(max, w); }
+      }
+      return { min, max, what: `${n} cells per face of a ${p.sphereDia} mm sphere`, wallLimit: p.sphereDia / 2 - r };
+    }
+    default: return null;
+  }
 }
 
 /** Fusion user-parameter definitions in dependency order. */
@@ -69,6 +121,9 @@ export function paramDefs(p: PhysicalParams): ParamDef[] {
     { name: 'layerH', expr: 'floorT + wallH', mm: layerHOf(p), comment: 'layer stack-up (live)' },
     { name: 'holeDia', expr: mm(p.holeDia), mm: p.holeDia, comment: 'dropout / trap / goal hole diameter (live)' },
     { name: 'bridgeLift', expr: mm(p.bridgeLift), mm: p.bridgeLift, comment: 'gap under bridge walls (live)' },
+    { name: 'tubeDia', expr: mm(p.tubeDia), mm: p.tubeDia, comment: 'cylinder maze: inner tube diameter (baked into layout)' },
+    { name: 'cubeSide', expr: mm(p.cubeSide), mm: p.cubeSide, comment: 'cube maze: inner side (baked into layout)' },
+    { name: 'sphereDia', expr: mm(p.sphereDia), mm: p.sphereDia, comment: 'sphere maze: inner diameter (baked into layout)' },
   ];
 }
 

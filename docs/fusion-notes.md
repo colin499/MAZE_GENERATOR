@@ -62,3 +62,17 @@ Resulting body: 1, 597 faces. One `execute_code` chunk per layer is comfortably 
 - Thin-extruded runs end flat at their centre-line endpoints, which leaves a notch at outer corners and L
   junctions when joined to an existing body. The planner extends every run by wallT/2 at both ends; a free end
   then stops flush with the neighbouring channel (still exactly chanW wide) and all corners are square.
+
+## Shell shapes (cylinder / cube / sphere), 2026-11-06
+- Parametric designs refuse `setByThreePoints` with raw Point3D and `ConstructionPointInput.setByPoint(Point3D)`
+  ("Environment is not supported"). Usable planes: offsets of base planes, and `setByAngle(axis, angle, basePlane)`.
+- Base plane normals: XY → +z, XZ → +y, YZ → +x. `setByAngle(zAxis, 30°, XZ)` rotates the base normal right-handed
+  about the axis: normal (−0.5, 0.866, 0). A plane turned 180° then offset by −d sits at +d with an inward normal;
+  a thin extrude on it goes inward (verified: z 20 → 10 mm).
+- Three-point arcs (`sketchArcs.addByThreePoints`) + two lines make a sector profile; `setSymmetricExtent(t, True)`
+  extrudes it to exactly the expected volume.
+- Circles with `addDiameterDimension` + `parameter.expression = 'tubeDia + 2 * floorT'` keep shell diameters live;
+  pick the annulus profile by area (`profile.areaProperties().area`).
+- Revolve fails when the profile crosses the axis ("ASM_WIRE_X_AXIS"): revolve a half profile whose edge is the axis.
+- **Process rule**: `execute_code` runs in whatever document is active, which follows the user's tabs. Activate the
+  marked scratch document and assert the marker in the same call as the build (see `scripts/` runner pattern).

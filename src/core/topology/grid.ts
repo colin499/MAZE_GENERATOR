@@ -1,7 +1,7 @@
 import type { CellId } from '../model/ids';
 import type { Frame } from '../math/vec';
-import { SIDE_DELTA, isBoundary } from '../model/topology';
-import type { CellInfo, PanelInfo, PanelMetrics, Side, Topology, TopologySpec } from '../model/topology';
+import { SIDE_DELTA, isBoundary, surfaceFromPoint } from '../model/topology';
+import type { CellInfo, PanelCrossing, PanelInfo, PanelMetrics, Side, Surface, SurfaceParams, Topology, TopologySpec } from '../model/topology';
 
 type GridSpec = Extract<TopologySpec, { kind: 'flat' | 'stacked' }>;
 
@@ -61,6 +61,23 @@ export class GridTopology implements Topology {
 
   panelFrame(panel: number, m: PanelMetrics): Frame {
     return { origin: [0, 0, panel * m.layerH], x: [1, 0, 0], y: [0, 1, 0] };
+  }
+
+  private surfaces = new WeakMap<SurfaceParams, Surface>();
+  surface(p: SurfaceParams): Surface {
+    const hit = this.surfaces.get(p);
+    if (hit) return hit;
+    const pitch = p.chanW + p.wallT, layerH = p.floorT + p.wallH, half = p.wallT / 2;
+    const s = surfaceFromPoint((panel, u, v, h) => [u * pitch, v * pitch, panel * layerH + p.floorT + h], {
+      closed: false, curved: false, edgeInset: 0,
+      bbox: { min: [-half, -half, 0], max: [this.w * pitch + half, this.h * pitch + half, (this.layerCount - 1) * layerH + p.floorT + p.wallH] },
+    });
+    this.surfaces.set(p, s);
+    return s;
+  }
+
+  crossPanel(): PanelCrossing | null {
+    return null; // layers are bounded by outer walls; nothing to cross into
   }
 
   allowedStart(id: CellId): boolean {

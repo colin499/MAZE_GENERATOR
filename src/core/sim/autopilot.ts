@@ -1,10 +1,35 @@
 import type { CellId } from '../model/ids';
 import type { Maze } from '../model/maze';
 import type { Topology } from '../model/topology';
+import { SIDE_DELTA, sideTo } from '../model/topology';
 import { graphOf } from '../graph/index';
 import type { BallState, Tilt } from './ball';
 import { clampTilt } from './ball';
 import type { World } from './world';
+import type { ShellSim } from './shell';
+import type { Vec3 } from '../math/vec';
+import { quatRotate } from '../math/quat';
+import type { Quat } from '../math/quat';
+
+/** Next cell toward the goal from every cell, never stepping into a trap; −1 where the goal is unreachable. */
+export function nextHopTable(maze: Maze, topo: Topology): Int32Array {
+  const n = topo.cellCount;
+  const g = graphOf(maze, n);
+  const dist = new Int32Array(n).fill(-1);
+  const next = new Int32Array(n).fill(-1);
+  const queue: CellId[] = [maze.goal];
+  dist[maze.goal] = 0;
+  for (let qi = 0; qi < queue.length; qi++) {
+    const c = queue[qi]!;
+    for (const p of g.inn[c]!) {
+      if (maze.traps.has(p) || dist[p] !== -1) continue;
+      dist[p] = dist[c]! + 1;
+      next[p] = c;
+      queue.push(p);
+    }
+  }
+  return next;
+}
 
 export interface AutopilotOptions {
   /** Cruise speed, mm/s. */
@@ -24,22 +49,7 @@ export class Autopilot {
   private readonly next: Int32Array;
 
   constructor(maze: Maze, private readonly topo: Topology, private readonly world: World, readonly opts: AutopilotOptions = DEFAULT_AUTOPILOT) {
-    const n = topo.cellCount;
-    const g = graphOf(maze, n);
-    // reverse BFS from the goal over arcs whose source is not a trap
-    const dist = new Int32Array(n).fill(-1);
-    this.next = new Int32Array(n).fill(-1);
-    const queue: CellId[] = [maze.goal];
-    dist[maze.goal] = 0;
-    for (let qi = 0; qi < queue.length; qi++) {
-      const c = queue[qi]!;
-      for (const p of g.inn[c]!) {
-        if (maze.traps.has(p) || dist[p] !== -1) continue;
-        dist[p] = dist[c]! + 1;
-        this.next[p] = c;
-        queue.push(p);
-      }
-    }
+    this.next = nextHopTable(maze, topo);
   }
 
   nextHop(cell: CellId): CellId | null {
@@ -86,5 +96,101 @@ export class Autopilot {
     // a = (5/7) g sinθ ≈ 7007 θ  →  θ needed to change v by Δv within tau
     const k = 1 / (o.tau * 7007);
     return clampTilt({ x: (vdx - s.vx) * k, y: (vdy - s.vy) * k }, o.maxTilt);
+  }
+}
+
+/** Steering request for a shell: a tangent direction in the object frame, a slope angle, and the floor normal to level. */
+export interface ShellSteer {
+  readonly dir: Vec3;
+  readonly angle: number;
+  /** Object-frame normal of the floor the ball should be on (the next face when crossing an edge). */
+  readonly ref: Vec3;
+}
+
+/** Autopilot for shell mazes: aims at the next cell in the current panel's grid coordinates. */
+export class ShellAutopilot {
+  private readonly next: Int32Array;
+
+  constructor(maze: Maze, private readonly topo: Topology, private readonly sim: ShellSim, readonly opts: AutopilotOptions = DEFAULT_AUTOPILOT) {
+    this.next = nextHopTable(maze, topo);
+  }
+
+  nextHop(cell: CellId): CellId | null {
+    const n = this.next[cell]!;
+    return n < 0 ? null : (n as CellId);
+  }
+
+  /** Target point in the current panel's grid coordinates (cells across a panel edge are folded out). */
+  target(): { u: number; v: number; slow: boolean } | null {
+    const s = this.sim.state;
+    if (s.cell === null) return null;
+    let cur = s.cell;
+    let nxt = this.nextHop(cur);
+    if (nxt === null) return null;
+    const ci = this.topo.cell(cur);
+    let side = sideTo(this.topo, cur, nxt);
+    if (side === null) return null;
+    let d = SIDE_DELTA[side]!;
+    let steps = 1;
+    // look ahead along straight runs within this panel
+    for (let i = 0; i < 2; i++) {
+      const after = this.nextHop(nxt);
+      if (after === null || after === this.sim.maze.goal || this.topo.cell(nxt).panel !== ci.panel) break;
+      const s2 = sideTo(this.topo, nxt, after);
+      if (s2 !== side) break;
+      cur = nxt; nxt = after; steps++;
+      side = s2; d = SIDE_DELTA[side]!;
+    }
+    const slow = this.nextHop(nxt) === this.sim.maze.goal || this.topo.cell(nxt).panel !== ci.panel;
+    return { u: ci.u + 0.5 + d[0] * steps, v: ci.v + 0.5 + d[1] * steps, slow };
+  }
+
+  /** Steering for the current state: desired tangent direction in the object frame and slope. */
+  control(): ShellSteer | null {
+    const s = this.sim.state;
+    if (s.phase !== 'rolling' || s.cell === null) return null;
+    const t = this.target();
+    if (!t) return null;
+    const surf = this.sim.surface;
+    const [pu, pv] = surf.metric(s.panel, s.u, s.v, this.sim.ballR);
+    const dx = (t.u - s.u) * pu, dy = (t.v - s.v) * pv;
+    const d = Math.hypot(dx, dy);
+    const o = this.opts;
+    const vmax = t.slow ? Math.min(o.speed, 40 + d * 4) : Math.min(o.speed, 60 + d * 3);
+    const vdx = d > 1e-6 ? (dx / d) * vmax : 0, vdy = d > 1e-6 ? (dy / d) * vmax : 0;
+    let eu = vdx - s.vu, ev = vdy - s.vv;
+    const e = Math.hypot(eu, ev);
+    const k = 1 / (o.tau * 7007);
+    const angle = Math.min(o.maxTilt, e * k);
+    // when the next cell lies on another panel, express the request on that panel: its normal must
+    // come under the ball (a 90° turn on a cube) and the push is "away from the shared edge"
+    let frame = surf.frame(s.panel, s.u, s.v);
+    const nxt = this.nextHop(s.cell)!;
+    const ni = this.topo.cell(nxt);
+    if (ni.panel !== s.panel) {
+      const side = sideTo(this.topo, s.cell, nxt)!;
+      const dd = SIDE_DELTA[side]!;
+      const x = this.topo.crossPanel(s.panel, s.u + dd[0] * 1.5, s.v + dd[1] * 1.5);
+      if (x) {
+        const mu = x.m[0] * eu + x.m[1] * ev, mv = x.m[2] * eu + x.m[3] * ev;
+        eu = mu; ev = mv;
+        frame = surf.frame(x.panel, x.u, x.v);
+      }
+    }
+    if (e < 1e-6) return { dir: [0, 0, 0], angle: 0, ref: frame.n };
+    const dir: Vec3 = [
+      (eu * frame.tu[0] + ev * frame.tv[0]) / e,
+      (eu * frame.tu[1] + ev * frame.tv[1]) / e,
+      (eu * frame.tu[2] + ev * frame.tv[2]) / e,
+    ];
+    return { dir, angle, ref: frame.n };
+  }
+
+  /** The same steering expressed as a horizontal world direction for a given object orientation. */
+  worldSteer(R: Quat): { d: Vec3; angle: number; ref: Vec3 } {
+    const c = this.control();
+    if (!c) return { d: [0, 0, 0], angle: 0, ref: this.sim.ballNormal() };
+    const w = quatRotate(R, c.dir);
+    return { d: [w[0], w[1], 0], angle: c.angle, ref: c.ref };
   }
 }

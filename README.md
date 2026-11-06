@@ -21,6 +21,15 @@ Editor: pick a tool in the header (Wall, Bridge, Trap, Dropout, Start, Goal, Loc
 viewport, `Cmd/Ctrl+Z` undo, `f` fit, `t` top view. "Harder" searches 24 seeds for the highest score;
 "Regenerate unlocked" keeps locked cells and rebuilds the rest. Work autosaves in the browser; Save/Load as JSON.
 
+## Shapes
+Besides flat boards and stacked layers, the maze can live on the **inside of a tube** (cylinder: the ball enters at
+one end and must reach the exit hole in the far end cap), on the **inside of a hollow cube**, or on the **inside of a
+hollow sphere** (six cube faces projected onto the sphere; every wall follows a great circle). Walls are ribs on the
+inner surface; traps are holes through the shell. The Physical panel shows the channel width between walls at the
+ball for the chosen shell size and cell count, and refuses sizes the ball cannot pass. Play mode turns the whole
+object (arrows / WASD / drag) instead of tilting a board. The View section switches between the 3D shape (with a
+cutaway so you can see inside) and the unfolded net, which is easier to edit.
+
 ## Layers
 Click a layer number to edit it; the other layers turn translucent ("ghost") so you keep the context of the levels
 above and below. Each layer's mode can be cycled solid → ghost → hidden in the Layers table, or set for all other
@@ -43,5 +52,10 @@ and the model recomputes. The in-plane layout (pitch = `chanW + wallT`) is baked
 editor and export again (the script replaces the component).
 
 With the Fusion MCP bridge, "Copy bridge chunks" gives one idempotent script per layer; each runs in about a second.
+
+Shell shapes export as native features too: a tube (ring extrude, live `tubeDia`/`floorT`), caps with the exit hole,
+walls as thin extrudes of radial lines and annular-sector extrudes (live `wallT`); a hollow cube with thin-extruded
+walls on each inner face (live `wallT`, `wallH`); a revolved sphere shell with sector walls on great-circle planes.
+Trap and goal holes are revolve-cuts along the surface normal. On shells the wall height and hole positions are baked.
 
 See `docs/design.md` (architecture) and `docs/fusion-notes.md` (API findings and pitfalls).
