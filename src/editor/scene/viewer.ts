@@ -26,6 +26,10 @@ export interface PlaySettings {
   readonly maxTiltDeg: number;
   /** Simulation speed multiplier. */
   readonly speed: number;
+  /** Camera: straight down over the ball, the whole maze from above, or wherever the user left it. */
+  readonly view: 'ball' | 'maze' | 'free';
+  /** Cells visible across the viewport in the 'ball' view. */
+  readonly zoomCells: number;
 }
 
 export interface PlayStatus {
@@ -59,6 +63,10 @@ interface PlayRun {
   sim: BallSim;
   pilot: Autopilot;
   ball: THREE.Mesh;
+  /** Glow ring on the floor and a beacon up through the layers above, so the ball reads through ghosted levels. */
+  marker: THREE.Group;
+  view: PlaySettings['view'];
+  zoomCells: number;
   target: Tilt;
   dragStart: { x: number; y: number; tilt: Tilt } | null;
   lastStatus: number;
@@ -176,21 +184,68 @@ export class MazeViewer {
     const pilot = new Autopilot(s.maze, s.topo, world);
     const ball = new THREE.Mesh(
       new THREE.SphereGeometry(world.ballR, 32, 20),
-      new THREE.MeshStandardMaterial({ color: 0xf4f6fa, metalness: 0.85, roughness: 0.25 }),
+      new THREE.MeshStandardMaterial({ color: 0xffa23a, emissive: 0xff7a00, emissiveIntensity: 0.55, metalness: 0.3, roughness: 0.35 }),
     );
     ball.castShadow = true;
     ball.name = 'playBall';
     this.build.root.add(ball);
+    const marker = new THREE.Group();
+    const r = world.ballR;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r * 1.6, r * 2.3, 40), new THREE.MeshBasicMaterial({ color: 0xffa23a, transparent: true, opacity: 0.8, depthTest: false, side: THREE.DoubleSide }));
+    ring.renderOrder = 20;
+    const beaconH = world.layerH * world.layers.length + world.layerH;
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.12, r * 0.12, beaconH, 8), new THREE.MeshBasicMaterial({ color: 0xffa23a, transparent: true, opacity: 0.35, depthTest: false }));
+    beacon.rotation.x = Math.PI / 2;
+    beacon.position.z = beaconH / 2;
+    beacon.renderOrder = 20;
+    marker.add(ring, beacon);
+    this.build.root.add(marker);
     this.build.root.traverse((o) => { if (o.name === 'startBall') o.visible = false; });
     this.controls.mouseButtons.LEFT = null; // left drag tilts the board while playing
-    this.run = { sim, pilot, ball, target: { x: 0, y: 0 }, dragStart: null, lastStatus: 0 };
+    this.run = { sim, pilot, ball, marker, view: 'free', zoomCells: 0, target: { x: 0, y: 0 }, dragStart: null, lastStatus: 0 };
     this.clock.getDelta();
+    this.applyPlayView(s.play!, true);
+  }
+
+  /** Put the camera straight above the ball (or the whole maze) looking down. */
+  private applyPlayView(p: PlaySettings, force: boolean): void {
+    const run = this.run;
+    if (!run || !this.build) return;
+    const changed = force || run.view !== p.view || run.zoomCells !== p.zoomCells;
+    run.view = p.view; run.zoomCells = p.zoomCells;
+    if (!changed || p.view === 'free') return;
+    const world = run.sim.world;
+    const fov = (this.camera.fov * Math.PI) / 180;
+    let focus: THREE.Vector3, span: number;
+    if (p.view === 'maze') {
+      const size = new THREE.Vector3(); this.build.bbox.getSize(size);
+      focus = new THREE.Vector3(); this.build.bbox.getCenter(focus);
+      span = Math.max(size.x, size.y / this.camera.aspect) * 1.08;
+    } else {
+      focus = run.ball.getWorldPosition(new THREE.Vector3());
+      span = p.zoomCells * world.pitch;
+    }
+    const dist = span / 2 / Math.tan(fov / 2);
+    this.controls.target.copy(focus);
+    // a hair off vertical so the orbit controls keep a defined heading (north up)
+    this.camera.position.set(focus.x, focus.y - dist * 0.001, focus.z + dist);
+    this.camera.near = Math.max(0.1, dist / 100);
+    this.camera.far = dist * 20;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+  }
+
+  /** Re-frame the current play view (f while playing). */
+  reframe(): void {
+    if (this.state?.play) this.applyPlayView(this.state.play, true);
+    else this.fit();
   }
 
   private stopPlay(restore = true): void {
     if (!this.run) return;
-    this.build?.root.remove(this.run.ball);
+    this.build?.root.remove(this.run.ball, this.run.marker);
     disposeObject(this.run.ball);
+    disposeObject(this.run.marker);
     this.run = null;
     this.controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
     this.tiltGroup.rotation.set(0, 0, 0);
@@ -206,6 +261,7 @@ export class MazeViewer {
     const run = this.run, s = this.state;
     if (!run || !s || !s.play) return;
     const dt = Math.min(0.05, this.clock.getDelta());
+    this.applyPlayView(s.play, false);
     const max = deg(s.play.maxTiltDeg);
     let target: Tilt;
     if (s.play.autopilot) {
@@ -224,8 +280,10 @@ export class MazeViewer {
     const b = run.sim.state;
     run.ball.position.set(b.x, b.y, b.z);
     run.ball.visible = b.phase !== 'lost';
+    run.marker.visible = run.ball.visible;
+    run.marker.position.set(b.x, b.y, run.sim.world.layers[b.layer]!.floorZ + 0.3);
     this.tiltGroup.rotation.set(-run.sim.tilt.y, run.sim.tilt.x, 0);
-    if (s.play.follow) {
+    if (s.play.follow && s.play.view !== 'maze') {
       const wp = run.ball.getWorldPosition(new THREE.Vector3());
       const delta = wp.sub(this.controls.target).multiplyScalar(Math.min(1, 6 * dt));
       this.controls.target.add(delta);

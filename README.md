@@ -4,9 +4,14 @@ Generator and editor for extremely difficult physical ball mazes — stacked lev
 holes and hidden bridge passages — with export to Fusion 360 as native sketches and extrudes driven by user parameters.
 
 ## Use
+No install needed to run the editor: double-click **`app/MazeBuilder.html`** (one self-contained file, works
+offline from disk). Rebuild it after code changes with `npm run app`. Every push to `main` also builds it for GitHub
+Pages (enable Pages with source "GitHub Actions" in the repo settings once).
+
 ```
 npm install
-npm run dev            # editor at http://localhost:5173
+npm run dev            # live-reloading editor at http://localhost:5173 (development)
+npm run app            # build the single-file app → app/MazeBuilder.html
 npm test               # unit + property tests for the core
 npm run check          # typecheck (incl. DOM-free core), lint, tests
 npm run export -- --gen 12x12x4 --seed demo --out out/demo   # Fusion scripts from the terminal

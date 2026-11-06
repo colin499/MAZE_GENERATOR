@@ -13,7 +13,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.core.json --noEmit",
     "lint": "eslint src test",
     "export": "tsx src/cli/export.ts",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "app": "vite build && mkdir -p app && cp dist/index.html app/MazeBuilder.html",
+    "smoke:file": "node scripts/smoke-file.mjs"
   },
   "dependencies": {
     "@preact/signals": "^2.0.0",
@@ -32,6 +34,7 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.18.0",
     "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.4",
     "vitest": "^2.1.0"
   }
 }

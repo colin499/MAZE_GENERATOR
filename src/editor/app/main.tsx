@@ -51,10 +51,11 @@ function Viewport(): JSX.Element {
       if (S.play.value) {
         if (KEY_DIRS[k]) { e.preventDefault(); held.add(k); pushKeys(); return; }
         if (k === 'r') { S.resetBall(); return; }
+        if (k === 'f') { viewer.reframe(); return; }
         if (k === 'Escape') { S.stopPlay(); return; }
       }
       if (k === 'p') { if (S.play.value) S.stopPlay(); else S.startPlay(); return; }
-      if (k === 'f') viewer.fit();
+      if (k === 'f') viewer.reframe();
       if (k === 't') viewer.viewTop();
     };
     const keyup = (e: KeyboardEvent) => {

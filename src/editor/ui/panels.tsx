@@ -168,6 +168,15 @@ export function PlayPanel(): JSX.Element {
         <Check label="Camera follows the ball" k="follow" />
         <Check label="X-ray layers above the ball" k="xray" />
       </div>
+      <div class="row">
+        <label>Camera</label>
+        <select value={p.view} onChange={(e) => S.updatePlay({ view: (e.target as HTMLSelectElement).value as S.PlaySettings['view'] })}>
+          <option value="ball">Above the ball</option>
+          <option value="maze">Whole maze from above</option>
+          <option value="free">Free (orbit)</option>
+        </select>
+      </div>
+      {p.view === 'ball' && <Range label="Cells in view" value={p.zoomCells} min={4} max={30} step={1} onChange={(v) => S.updatePlay({ zoomCells: v })} />}
       <Range label="Max tilt" value={p.maxTiltDeg} min={2} max={15} step={0.5} onChange={(v) => S.updatePlay({ maxTiltDeg: v })} fmt={(v) => `${v}°`} />
       <Range label="Sim speed" value={p.speed} min={0.25} max={2} step={0.25} onChange={(v) => S.updatePlay({ speed: v })} fmt={(v) => `${v}×`} />
       {st && (
@@ -181,7 +190,7 @@ export function PlayPanel(): JSX.Element {
         </tbody></table>
       )}
       {S.playLog.value.length > 0 && <div class="log">{S.playLog.value.map((l, i) => <div key={i}>{l}</div>)}</div>}
-      <p class="hint">Real rolling-ball physics on a tilting board: gravity {`(5/7 g·sinθ)`}, wall bounces, rolling resistance, hole lips. Bridges are passed underneath; dropouts land on the layer below; traps lose the ball. Tilt with <kbd>←↑↓→</kbd> / <kbd>WASD</kbd> or left-drag; right-drag orbits.</p>
+      <p class="hint">Real rolling-ball physics on a tilting board: gravity {`(5/7 g·sinθ)`}, wall bounces, rolling resistance, hole lips. Bridges are passed underneath; dropouts land on the layer below; traps lose the ball. Tilt with <kbd>←↑↓→</kbd> / <kbd>WASD</kbd> or left-drag; right-drag orbits; <kbd>f</kbd> re-frames.</p>
       {blocked && !playing && <div class="diag error">The maze is unsolvable; fix it before playing.</div>}
     </section>
   );

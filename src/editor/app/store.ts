@@ -69,7 +69,7 @@ export const activeLayer = signal<number>(-1); // -1 = all layers
 /** Explicit display mode per layer; the active layer is always solid. */
 export const layerModes = signal<Readonly<Record<number, LayerMode>>>({});
 export const play = signal<PlaySettings | null>(null);
-export const playPrefs = signal<PlaySettings>({ autopilot: false, follow: true, xray: true, maxTiltDeg: 7, speed: 1 });
+export const playPrefs = signal<PlaySettings>({ autopilot: false, follow: true, xray: true, maxTiltDeg: 7, speed: 1, view: 'ball', zoomCells: 9 });
 export const playStatus = signal<PlayStatus | null>(null);
 export const playLog = signal<readonly string[]>([]);
 export const resetTick = signal(0);

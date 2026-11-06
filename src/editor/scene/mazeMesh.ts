@@ -73,6 +73,7 @@ export function buildMazeScene(maze: Maze, topo: Topology, phys: PhysicalParams,
     // floor: one plate, plus per-cell colour tiles for locks / heat / shafts
     const floor = new THREE.Mesh(place(box(W + phys.wallT, H + phys.wallT, phys.floorT), W / 2, H / 2, z0 + phys.floorT / 2), floorMat);
     floor.receiveShadow = true;
+    floor.name = 'floor';
     group.add(floor);
     const tiles: THREE.BufferGeometry[] = [];
     const tileColors: number[] = [];
@@ -215,17 +216,20 @@ export function applyLayerMode(group: THREE.Group, mode: LayerMode): void {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     const mats = Array.isArray(m.material) ? m.material : [m.material];
+    const opacity = ghost ? (m.name === 'floor' ? GHOST_FLOOR_OPACITY : GHOST_OPACITY) : 1;
     for (const mat of mats) {
-      if (mat.transparent === ghost && (ghost ? mat.opacity === GHOST_OPACITY : mat.opacity === 1)) continue;
+      if (mat.transparent === ghost && mat.opacity === opacity) continue;
       mat.transparent = ghost;
-      mat.opacity = ghost ? GHOST_OPACITY : 1;
+      mat.opacity = opacity;
       mat.depthWrite = !ghost;
       mat.needsUpdate = true;
     }
     m.castShadow = !ghost && m.userData.shadow === true;
   });
 }
-const GHOST_OPACITY = 0.16;
+const GHOST_OPACITY = 0.15;
+/** Ghosted floor plates nearly vanish so the layers underneath stay readable. */
+const GHOST_FLOOR_OPACITY = 0.05;
 
 export function disposeObject(obj: THREE.Object3D): void {
   obj.traverse((o) => {
