@@ -1,0 +1,8 @@
+#!/bin/bash
+# Opens MazeBuilder.html (next to this app bundle) in a real browser, whatever the Mac's default .html handler is.
+DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+FILE="$DIR/MazeBuilder.html"
+for app in "Google Chrome" "Safari" "Firefox" "Arc" "Microsoft Edge"; do
+  if open -a "$app" "$FILE" 2>/dev/null; then exit 0; fi
+done
+open "$FILE"
