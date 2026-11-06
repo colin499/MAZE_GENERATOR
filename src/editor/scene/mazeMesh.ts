@@ -139,7 +139,7 @@ export function buildMazeScene(maze: Maze, topo: Topology, phys: PhysicalParams,
   const clippable: THREE.Material[] = [];
   const maxHeat = heat ? heat.reduce((a, b) => Math.max(a, b), 0) : 0;
   const half = phys.wallT / 2;
-  const sideMode = surf.closed ? THREE.DoubleSide : THREE.FrontSide;
+  const sideMode = surf.cutaway ? THREE.DoubleSide : THREE.FrontSide;
   const mat = (opts: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial({ side: sideMode, ...opts }); clippable.push(m); return m; };
   const basic = (opts: THREE.MeshBasicMaterialParameters) => { const m = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, ...opts }); clippable.push(m); return m; };
 

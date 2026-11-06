@@ -66,9 +66,9 @@ export function GeneratePanel(): JSX.Element {
         <select value={s.kind} onChange={(e) => S.updateSettings({ kind: (e.target as HTMLSelectElement).value as S.ShapeKind })}>
           <option value="stacked">Stacked layers</option>
           <option value="flat">Flat board</option>
-          <option value="cylinder">Cylinder (inside a tube)</option>
-          <option value="cube">Cube (inside a hollow cube)</option>
-          <option value="sphere">Sphere (inside a hollow sphere)</option>
+          <option value="cylinder">Cylinder (tube)</option>
+          <option value="cube">Cube</option>
+          <option value="sphere">Sphere</option>
         </select>
       </div>
       {(s.kind === 'flat' || s.kind === 'stacked') && <>
@@ -119,9 +119,9 @@ export function LayersPanel(): JSX.Element {
         <div class="btns">
           <button class={!S.unfolded.value ? 'active' : ''} onClick={() => (S.unfolded.value = false)} title="The real shape">3D</button>
           <button class={S.unfolded.value ? 'active' : ''} onClick={() => (S.unfolded.value = true)} disabled={playing} title="Flattened net of the surface, easier to edit">Unfolded</button>
-          <button class={S.cutaway.value ? 'active' : ''} onClick={() => (S.cutaway.value = !S.cutaway.value)} title="Hide the half nearest the camera so you can see inside">Cutaway</button>
+          {S.phys.value.shellSide === 'inside' && <button class={S.cutaway.value ? 'active' : ''} onClick={() => (S.cutaway.value = !S.cutaway.value)} title="Hide the half nearest the camera so you can see inside">Cutaway</button>}
         </div>
-        <p class="hint">{t.spec.kind === 'cylinder' ? 'The maze is on the inside of the tube; the ball enters at one end and must reach the other.' : 'The maze is on the inside of the shell; the ball sits on the inner surface and you turn the whole object. Faces are numbered 0–5.'} The cutaway shows the far half from inside.</p>
+        <p class="hint">{S.phys.value.shellSide === 'inside' ? 'The maze is on the inside of the shell; the cutaway shows the far half from inside.' : 'The maze is on the outer surface; you turn the whole object to roll the ball.'}{t.spec.kind !== 'cylinder' ? ' Faces are numbered 0–5.' : ' The ball starts at one end and must reach the far end.'}</p>
         <div class="row" style="margin-top:6px">
           <label>Locked cells</label>
           <span>{S.maze.value.locked.size}</span>
@@ -233,7 +233,8 @@ export function PhysicalPanel(): JSX.Element {
   const p = S.phys.value;
   const kind = S.maze.value.topology.kind;
   const ch = shellChannel(p, S.maze.value.topology);
-  const f = (k: keyof PhysicalParams, label: string, step = 0.1) => <Num label={label} value={p[k]} step={step} min={0} onChange={(v) => S.updatePhys({ [k]: v } as Partial<PhysicalParams>)} />;
+  type NumKey = { [K in keyof PhysicalParams]: PhysicalParams[K] extends number ? K : never }[keyof PhysicalParams];
+  const f = (k: NumKey, label: string, step = 0.1) => <Num label={label} value={p[k]} step={step} min={0} onChange={(v) => S.updatePhys({ [k]: v } as Partial<PhysicalParams>)} />;
   return (
     <section>
       <h2>Physical (mm)</h2>
@@ -244,12 +245,21 @@ export function PhysicalPanel(): JSX.Element {
       {f('wallH', 'Wall height')}
       {f('holeDia', 'Hole diameter')}
       {f('bridgeLift', 'Bridge gap')}
-      {kind === 'cylinder' && f('tubeDia', 'Tube inner Ø')}
-      {kind === 'cube' && f('cubeSide', 'Cube inner side')}
-      {kind === 'sphere' && f('sphereDia', 'Sphere inner Ø')}
+      {S.isShellMaze.value && (
+        <div class="row">
+          <label>Maze on</label>
+          <select value={p.shellSide} onChange={(e) => S.updatePhys({ shellSide: (e.target as HTMLSelectElement).value as PhysicalParams['shellSide'] })}>
+            <option value="outside">outer surface</option>
+            <option value="inside">inner surface</option>
+          </select>
+        </div>
+      )}
+      {kind === 'cylinder' && f('tubeDia', 'Tube Ø at maze')}
+      {kind === 'cube' && f('cubeSide', 'Cube side at maze')}
+      {kind === 'sphere' && f('sphereDia', 'Sphere Ø at maze')}
       {S.physIssues.value.map((i, n) => <div key={n} class={`diag ${i.level}`}>{i.message}</div>)}
       {ch
-        ? <p class="hint">Channel between walls at the ball: {ch.min.toFixed(1)}{ch.max - ch.min > 0.05 ? `–${ch.max.toFixed(1)}` : ''} mm ({ch.what}). The shell thickness is the floor thickness; walls are ribs on the inside.</p>
+        ? <p class="hint">Channel between walls at the ball: {ch.min.toFixed(1)}{ch.max - ch.min > 0.05 ? `–${ch.max.toFixed(1)}` : ''} mm ({ch.what}). The size is measured at the maze surface; the shell is the floor thickness deep and the walls are ribs {p.shellSide === 'inside' ? 'pointing in' : 'standing out'}. On the outside the ball needs a clear sleeve to stay on.</p>
         : <p class="hint">Pitch {(p.chanW + p.wallT).toFixed(2)} mm · layer height {(p.floorT + p.wallH).toFixed(2)} mm. Wall/floor heights and hole sizes stay live parameters in Fusion; the layout pitch is baked at export.</p>}
     </section>
   );

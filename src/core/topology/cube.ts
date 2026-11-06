@@ -150,23 +150,29 @@ export class CubeTopology implements Topology {
         return [f.o[0] * W + (f.tu[0] * u + f.tv[0] * v) * pitch, f.o[1] * W + (f.tu[1] * u + f.tv[1] * v) * pitch, p.floorT + h];
       }, { closed: false, curved: false, edgeInset: 0, bbox: { min: [-W, -W, 0], max: [4 * W, 3 * W, p.floorT + p.wallH] } });
     } else if (this.spec.kind === 'cube') {
+      const inside = p.shellSide === 'inside';
+      const sgn = inside ? -1 : 1; // h grows away from the shell material
       const S = p.cubeSide / 2;
+      const So = inside ? S + p.floorT : S + p.wallH;
       s = surfaceFromPoint((panel, u, v, h) => {
         const q = this.cubePoint(panel, u, v);
         const f = FACES[panel]!;
-        return axpy([q[0] * S, q[1] * S, q[2] * S], -h, f.n);
-      }, { closed: true, curved: false, edgeInset: p.ballDia / 2, bbox: { min: [-S - p.floorT, -S - p.floorT, -S - p.floorT], max: [S + p.floorT, S + p.floorT, S + p.floorT] } });
+        return axpy([q[0] * S, q[1] * S, q[2] * S], sgn * h, f.n);
+      }, { closed: true, cutaway: inside, curved: false, edgeInset: inside ? p.ballDia / 2 : 0, bbox: { min: [-So, -So, -So], max: [So, So, So] } });
     } else {
+      const inside = p.shellSide === 'inside';
+      const sgn = inside ? -1 : 1;
       const R = p.sphereDia / 2;
+      const Ro = inside ? R + p.floorT : R + p.wallH;
       s = surfaceFromPoint((panel, u, v, h) => {
         // equiangular: equal angle steps across the face give near-uniform cells
         const f = FACES[panel]!;
         const x = Math.tan(((u / n) - 0.5) * (Math.PI / 2)), y = Math.tan(((v / n) - 0.5) * (Math.PI / 2));
         const q = axpy(axpy(f.n, x, f.tu), y, f.tv);
         const l = Math.hypot(q[0], q[1], q[2]);
-        const r = (R - h) / l;
+        const r = (R + sgn * h) / l;
         return [q[0] * r, q[1] * r, q[2] * r];
-      }, { closed: true, curved: true, edgeInset: 0, bbox: { min: [-R - p.floorT, -R - p.floorT, -R - p.floorT], max: [R + p.floorT, R + p.floorT, R + p.floorT] } });
+      }, { closed: true, cutaway: inside, curved: true, edgeInset: 0, bbox: { min: [-Ro, -Ro, -Ro], max: [Ro, Ro, Ro] } });
     }
     cache.set(p, s);
     return s;

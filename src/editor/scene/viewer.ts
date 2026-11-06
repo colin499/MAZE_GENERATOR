@@ -152,7 +152,7 @@ export class MazeViewer {
     if (next.play && (!this.run || rebuild)) this.startPlay(next);
     if (!next.play && this.run) this.stopPlay();
     if (this.run && next.resetTick !== this.lastReset) { this.lastReset = next.resetTick; this.resetBall(); }
-    this.clipping = !!this.build && this.build.surface.closed && next.cutaway;
+    this.clipping = !!this.build && this.build.surface.cutaway && next.cutaway;
     for (const m of this.build?.clippable ?? []) m.clippingPlanes = this.clipping ? [this.clipPlane] : null;
     this.applyLayerModes();
     this.applySolution(next, unfolded);

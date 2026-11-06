@@ -111,8 +111,14 @@ export interface ShellSteer {
 export class ShellAutopilot {
   private readonly next: Int32Array;
 
+  /** Cruise speed capped by the shell's size: a few radians per second around a small tube is plenty. */
+  private readonly speed: number;
+
   constructor(maze: Maze, private readonly topo: Topology, private readonly sim: ShellSim, readonly opts: AutopilotOptions = DEFAULT_AUTOPILOT) {
     this.next = nextHopTable(maze, topo);
+    const b = sim.surface.bbox;
+    const radius = Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]) / 2;
+    this.speed = Math.min(opts.speed, 3 * radius);
   }
 
   nextHop(cell: CellId): CellId | null {
@@ -156,34 +162,43 @@ export class ShellAutopilot {
     const dx = (t.u - s.u) * pu, dy = (t.v - s.v) * pv;
     const d = Math.hypot(dx, dy);
     const o = this.opts;
-    const vmax = t.slow ? Math.min(o.speed, 40 + d * 4) : Math.min(o.speed, 60 + d * 3);
+    const vmax = t.slow ? Math.min(this.speed, 40 + d * 4) : Math.min(this.speed, 60 + d * 3);
     const vdx = d > 1e-6 ? (dx / d) * vmax : 0, vdy = d > 1e-6 ? (dy / d) * vmax : 0;
     let eu = vdx - s.vu, ev = vdy - s.vv;
     const e = Math.hypot(eu, ev);
     const k = 1 / (o.tau * 7007);
     const angle = Math.min(o.maxTilt, e * k);
-    // when the next cell lies on another panel, express the request on that panel: its normal must
-    // come under the ball (a 90° turn on a cube) and the push is "away from the shared edge"
+    // When the next cell lies on another panel the floor changes direction at the edge:
+    // - concave (inside a cube): the ball pins in the corner, so level the NEXT face and push away from the edge;
+    // - convex (outside a cube): the ball simply rolls over the edge (the sleeve holds it on) and the controller
+    //   then levels the new face as fast as it can — levelling the next face in advance would put the edge at
+    //   the top and the ball could never climb to it;
+    // - smooth (sphere): nothing special, the current floor is the reference.
     let frame = surf.frame(s.panel, s.u, s.v);
+    let ref: Vec3 = frame.n;
     const nxt = this.nextHop(s.cell)!;
     const ni = this.topo.cell(nxt);
-    if (ni.panel !== s.panel) {
+    if (ni.panel !== s.panel && !surf.curved) {
       const side = sideTo(this.topo, s.cell, nxt)!;
       const dd = SIDE_DELTA[side]!;
       const x = this.topo.crossPanel(s.panel, s.u + dd[0] * 1.5, s.v + dd[1] * 1.5);
       if (x) {
-        const mu = x.m[0] * eu + x.m[1] * ev, mv = x.m[2] * eu + x.m[3] * ev;
-        eu = mu; ev = mv;
-        frame = surf.frame(x.panel, x.u, x.v);
+        const next = surf.frame(x.panel, x.u, x.v);
+        if (surf.edgeInset > 0) {
+          const mu = x.m[0] * eu + x.m[1] * ev, mv = x.m[2] * eu + x.m[3] * ev;
+          eu = mu; ev = mv;
+          frame = next;
+          ref = next.n;
+        }
       }
     }
-    if (e < 1e-6) return { dir: [0, 0, 0], angle: 0, ref: frame.n };
+    if (e < 1e-6) return { dir: [0, 0, 0], angle: 0, ref };
     const dir: Vec3 = [
       (eu * frame.tu[0] + ev * frame.tv[0]) / e,
       (eu * frame.tu[1] + ev * frame.tv[1]) / e,
       (eu * frame.tu[2] + ev * frame.tv[2]) / e,
     ];
-    return { dir, angle, ref: frame.n };
+    return { dir, angle, ref };
   }
 
   /** The same steering expressed as a horizontal world direction for a given object orientation. */

@@ -108,16 +108,24 @@ describe('shell topologies', () => {
     }
   });
 
-  it('sphere surface points lie on the sphere and the cube ones on the cube', () => {
-    const sph = createTopology({ kind: 'sphere', n: 5 }).surface(DEFAULT_PHYSICAL);
-    const R = DEFAULT_PHYSICAL.sphereDia / 2;
-    for (const [p, u, v] of [[0, 0.3, 4.9], [3, 2.5, 2.5], [5, 0, 0]] as const) {
-      const q = sph.point(p, u, v, 3);
-      expect(Math.hypot(q[0], q[1], q[2])).toBeCloseTo(R - 3, 6);
+  it('sphere surface points lie on the sphere and the cube ones on the cube, on either side', () => {
+    for (const side of ['outside', 'inside'] as const) {
+      const phys = { ...DEFAULT_PHYSICAL, shellSide: side };
+      const sgn = side === 'inside' ? -1 : 1;
+      const sph = createTopology({ kind: 'sphere', n: 5 }).surface(phys);
+      const R = phys.sphereDia / 2;
+      for (const [p, u, v] of [[0, 0.3, 4.9], [3, 2.5, 2.5], [5, 0, 0]] as const) {
+        const q = sph.point(p, u, v, 3);
+        expect(Math.hypot(q[0], q[1], q[2])).toBeCloseTo(R + sgn * 3, 6);
+      }
+      expect(sph.cutaway).toBe(side === 'inside');
+      const cube = createTopology({ kind: 'cube', n: 5 }).surface(phys);
+      const q = cube.point(2, 1, 4, 2);
+      expect(q[0]).toBeCloseTo(phys.cubeSide / 2 + sgn * 2, 6);
+      // the frame normal always points away from the shell material, toward the ball
+      const f = cube.frame(2, 1, 4);
+      expect(f.n[0]).toBeCloseTo(sgn, 6);
     }
-    const cube = createTopology({ kind: 'cube', n: 5 }).surface(DEFAULT_PHYSICAL);
-    const q = cube.point(2, 1, 4, 2);
-    expect(q[0]).toBeCloseTo(DEFAULT_PHYSICAL.cubeSide / 2 - 2, 6);
   });
 
   it('physical validation flags channels too narrow for the ball', () => {

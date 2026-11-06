@@ -19,6 +19,8 @@ export interface PhysicalParams {
   readonly cubeSide: number;
   /** Inner diameter of a sphere maze shell. */
   readonly sphereDia: number;
+  /** Shell shapes: maze on the outer surface (ball held on by a clear sleeve) or on the inside. */
+  readonly shellSide: 'outside' | 'inside';
 }
 
 export const DEFAULT_PHYSICAL: PhysicalParams = {
@@ -32,6 +34,7 @@ export const DEFAULT_PHYSICAL: PhysicalParams = {
   tubeDia: 30.1,
   cubeSide: 60,
   sphereDia: 60,
+  shellSide: 'outside',
 };
 
 /** Grid pitch: wall centre-line to wall centre-line. */
@@ -46,7 +49,7 @@ export interface PhysicalIssue {
 
 export function validatePhysical(p: PhysicalParams, spec?: TopologySpec): PhysicalIssue[] {
   const out: PhysicalIssue[] = [];
-  const pos = (k: keyof PhysicalParams) => { if (!(p[k] > 0) || !Number.isFinite(p[k])) out.push({ level: 'error', message: `${k} must be a positive number` }); };
+  const pos = (k: keyof PhysicalParams) => { const v = p[k]; if (typeof v === 'number' && (!(v > 0) || !Number.isFinite(v))) out.push({ level: 'error', message: `${k} must be a positive number` }); };
   (Object.keys(p) as (keyof PhysicalParams)[]).forEach(pos);
   if (out.length) return out;
   if (spec) {
@@ -72,15 +75,17 @@ export function validatePhysical(p: PhysicalParams, spec?: TopologySpec): Physic
 /** Narrowest channel at the ball's height on a shell topology (walls are radial, so channels narrow inward). */
 export function shellChannel(p: PhysicalParams, spec: TopologySpec): { min: number; max: number; what: string; wallLimit: number | null } | null {
   const r = p.ballDia / 2;
+  const inside = p.shellSide === 'inside';
+  const sgn = inside ? -1 : 1;
   switch (spec.kind) {
     case 'cylinder': {
       const R = p.tubeDia / 2;
-      const arc = (2 * Math.PI * (R - r)) / spec.around - p.wallT; // around; along is chanW
-      return { min: Math.min(arc, p.chanW), max: Math.max(arc, p.chanW), what: `${spec.around} cells around a ${p.tubeDia} mm tube`, wallLimit: R - r };
+      const arc = (2 * Math.PI * (R + sgn * r)) / spec.around - p.wallT; // around; along is chanW
+      return { min: Math.min(arc, p.chanW), max: Math.max(arc, p.chanW), what: `${spec.around} cells around a ${p.tubeDia} mm tube (${p.shellSide})`, wallLimit: inside ? R - r : null };
     }
     case 'cube': {
       const cell = p.cubeSide / spec.n;
-      return { min: cell - p.wallT, max: cell - p.wallT, what: `${spec.n} cells per ${p.cubeSide} mm face`, wallLimit: p.cubeSide / 2 - r };
+      return { min: cell - p.wallT, max: cell - p.wallT, what: `${spec.n} cells per ${p.cubeSide} mm face (${p.shellSide})`, wallLimit: inside ? p.cubeSide / 2 - r : null };
     }
     case 'sphere': {
       // equiangular cubed sphere: sample the metric at the ball's height; the channel across a wall is the
@@ -96,7 +101,7 @@ export function shellChannel(p: PhysicalParams, spec: TopologySpec): { min: numb
         const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
         for (const w of [pu * sinA - p.wallT, pv * sinA - p.wallT]) { min = Math.min(min, w); max = Math.max(max, w); }
       }
-      return { min, max, what: `${n} cells per face of a ${p.sphereDia} mm sphere`, wallLimit: p.sphereDia / 2 - r };
+      return { min, max, what: `${n} cells per face of a ${p.sphereDia} mm sphere (${p.shellSide})`, wallLimit: inside ? p.sphereDia / 2 - r : null };
     }
     default: return null;
   }

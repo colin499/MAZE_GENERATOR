@@ -291,7 +291,11 @@ export class ShellSim {
 export class ShellController {
   R: Quat = QUAT_ID;
 
-  constructor(readonly sim: ShellSim, public maxRate = (150 * Math.PI) / 180) {
+  /**
+   * `maxRate` is how fast the object may turn. A ball on the OUTSIDE of a shell sits on an unstable apex,
+   * so the controller must be able to chase it; real hands turn a small tube several times per second.
+   */
+  constructor(readonly sim: ShellSim, public maxRate = (540 * Math.PI) / 180) {
     this.sync();
   }
 

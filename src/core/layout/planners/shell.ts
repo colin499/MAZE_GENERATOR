@@ -83,9 +83,10 @@ function groupFeatures(first: FeatureGroup, rest: Feature[], perGroup: number, l
 }
 
 /**
- * Cylinder (inside a tube), cube and sphere (inside a hollow shell) planners. Walls are ribs on the
- * inner surface. Wall thickness, shell thickness and cap/tube diameters stay live Fusion parameters;
- * the layout, wall height and hole positions are baked.
+ * Cylinder, cube and sphere planners. The maze surface sits at the nominal size (tube diameter, cube
+ * side, sphere diameter); the shell is floorT thick on the far side of it and the walls are ribs on the
+ * ball's side (outside by default, or inside). Wall thickness, shell thickness and tube/cap diameters
+ * stay live Fusion parameters; the layout, wall height and hole positions are baked.
  */
 export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts: GridPlanOptions = {}): BuildPlan {
   const kind = topo.spec.kind;
@@ -99,6 +100,9 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
   const half = phys.wallT / 2;
   const overlap = Math.min(0.5, phys.floorT / 2); // walls reach this far into the shell so they fuse with it
   const holeR = phys.holeDia / 2;
+  const inside = phys.shellSide === 'inside';
+  const sgn = inside ? -1 : 1; // direction of growing h (away from the shell material), as a sign on the radius
+  const rAt = (R: number, h: number) => R + sgn * h;
 
   if (kind === 'cylinder') {
     const spec = topo.spec as { around: number; along: number };
@@ -108,13 +112,18 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
     const z = (zz: number): PlaneSpec => ({ kind: 'xyOffset', offset: MM(zz) });
     const angle = (u: number) => (2 * Math.PI * u) / spec.around;
     const outerDia = E(phys.tubeDia + 2 * phys.floorT, 'tubeDia + 2 * floorT');
-    shell.push({ op: 'ring', name: 'Tube', plane: z(0), center: [0, 0, 0], innerDia: E(phys.tubeDia, 'tubeDia'), outerDia, distance: MM(L), mode: 'new', body });
-    volume += Math.PI * ((R + phys.floorT) ** 2 - R ** 2) * L;
-    const gi = topo.cell(maze.goal);
-    const ga = angle(gi.u + 0.5), gr = R - holeR - 0.2;
-    shell.push({ op: 'disk', name: 'Start cap', plane: z(-phys.floorT), center: [0, 0, -phys.floorT], diameter: outerDia, holes: [], distance: E(phys.floorT, 'floorT'), mode: 'join', body });
-    shell.push({ op: 'disk', name: 'Goal cap', plane: z(L), center: [0, 0, round(L)], diameter: outerDia, holes: [{ center: R3([gr * Math.cos(ga), gr * Math.sin(ga), L]), diameter: E(phys.holeDia, 'holeDia') }], distance: E(phys.floorT, 'floorT'), mode: 'join', body });
-    volume += 2 * Math.PI * (R + phys.floorT) ** 2 * phys.floorT - Math.PI * holeR ** 2 * phys.floorT;
+    const innerDia = inside ? E(phys.tubeDia, 'tubeDia') : E(phys.tubeDia - 2 * phys.floorT, 'tubeDia - 2 * floorT');
+    const tubeOuter = inside ? outerDia : E(phys.tubeDia, 'tubeDia');
+    shell.push({ op: 'ring', name: 'Tube', plane: z(0), center: [0, 0, 0], innerDia, outerDia: tubeOuter, distance: MM(L), mode: 'new', body });
+    volume += Math.PI * (tubeOuter.mm ** 2 - innerDia.mm ** 2) / 4 * L;
+    if (inside) {
+      // closed start end; the goal exits through a hole in the far cap
+      const gi = topo.cell(maze.goal);
+      const ga = angle(gi.u + 0.5), gr = R - holeR - 0.2;
+      shell.push({ op: 'disk', name: 'Start cap', plane: z(-phys.floorT), center: [0, 0, -phys.floorT], diameter: outerDia, holes: [], distance: E(phys.floorT, 'floorT'), mode: 'join', body });
+      shell.push({ op: 'disk', name: 'Goal cap', plane: z(L), center: [0, 0, round(L)], diameter: outerDia, holes: [{ center: R3([gr * Math.cos(ga), gr * Math.sin(ga), L]), diameter: E(phys.holeDia, 'holeDia') }], distance: E(phys.floorT, 'floorT'), mode: 'join', body });
+      volume += 2 * Math.PI * (R + phys.floorT) ** 2 * phys.floorT - Math.PI * holeR ** 2 * phys.floorT;
+    }
 
     // axial walls (constant u): radial lines thin-extruded along z, grouped by start z and length
     const radial = (u: number, zz: number, rr: number): Vec3 => { const a = angle(u); return R3([rr * Math.cos(a), rr * Math.sin(a), zz]); };
@@ -126,7 +135,7 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
         const z0 = v0 * pv - half, len = (v1 - v0) * pv + phys.wallT;
         const key = `${round(z0)}:${round(len)}`;
         const g = groups.get(key) ?? groups.set(key, { z0, len, segs: [] }).get(key)!;
-        g.segs.push([radial(r.from[0], z0, R - phys.wallH + h0), radial(r.from[0], z0, R + overlap)]);
+        g.segs.push([radial(r.from[0], z0, rAt(R, phys.wallH)), radial(r.from[0], z0, rAt(R, h0 - (h0 === 0 ? overlap : 0)))]);
         volume += (phys.wallH - h0 + overlap) * phys.wallT * len;
       }
       let i = 0;
@@ -146,7 +155,7 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
         const pieces: [number, number][] = full ? [[u0, u0 + spec.around / 2], [u0 + spec.around / 2, u1]] : [[u0, u1]];
         for (const [a, b] of pieces) {
           const a0 = angle(a) - (full ? 0 : ext), a1 = angle(b) + (full ? 0 : ext);
-          const rIn = R - phys.wallH + h0, rOut = R + overlap;
+          const rIn = Math.min(rAt(R, phys.wallH), rAt(R, h0 - (h0 === 0 ? overlap : 0))), rOut = Math.max(rAt(R, phys.wallH), rAt(R, h0 - (h0 === 0 ? overlap : 0)));
           const pt = (rr: number, ang: number): Vec3 => R3([rr * Math.cos(ang), rr * Math.sin(ang), v * pv]);
           const mid = (a0 + a1) / 2;
           (byV.get(v) ?? byV.set(v, []).get(v)!).push({ innerStart: pt(rIn, a0), innerMid: pt(rIn, mid), innerEnd: pt(rIn, a1), outerStart: pt(rOut, a0), outerMid: pt(rOut, mid), outerEnd: pt(rOut, a1) });
@@ -161,36 +170,37 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
     ringRuns(runs[0]!.wall, 0, 'Walls');
     axialRuns(runs[0]!.bridge, phys.bridgeLift, 'Bridges');
     ringRuns(runs[0]!.bridge, phys.bridgeLift, 'Bridges');
-    // trap holes through the tube wall: revolve-cuts on the plane containing the axis at the trap's azimuth
+    // holes through the tube wall (traps; the goal too on the outside): revolve-cuts on the plane containing the axis
     for (const h of holeCells(maze)) {
-      if (h.kind === 'goal') continue; // the goal exits through the cap
+      if (h.kind === 'goal' && inside) continue; // exits through the cap
       const i = topo.cell(h.cell);
-      const a = angle(i.u + 0.5), zz = (i.v + 0.5) * pv;
-      const dir: Vec3 = [Math.cos(a), Math.sin(a), 0];
-      const from = add3(scale3(dir, R + phys.floorT + 1), [0, 0, zz]);
-      const to = add3(scale3(dir, R - 1), [0, 0, zz]);
-      holes.push({ op: 'radialHoles', name: `Trap ${h.cell}`, plane: anglePlane('Z', from), holes: [holeQuad('Z', from, to, holeR)], body });
+      const from = surf.point(0, i.u + 0.5, i.v + 0.5, -(phys.floorT + 1));
+      const to = surf.point(0, i.u + 0.5, i.v + 0.5, 1);
+      holes.push({ op: 'radialHoles', name: `${h.kind === 'goal' ? 'Goal' : 'Trap'} ${h.cell}`, plane: anglePlane('Z', from), holes: [holeQuad('Z', from, to, holeR)], body });
       volume -= Math.PI * holeR ** 2 * phys.floorT;
     }
-    const Ro = R + phys.floorT;
-    return finish(maze, topo, phys, opts, shell, walls, holes, volume, [[-Ro, -Ro, -phys.floorT], [Ro, Ro, L + phys.floorT]], body);
+    const Ro = inside ? R + phys.floorT : R + phys.wallH;
+    return finish(maze, topo, phys, opts, shell, walls, holes, volume, [[-Ro, -Ro, inside ? -phys.floorT : -half], [Ro, Ro, L + (inside ? phys.floorT : half)]], body);
   }
 
   const n = (topo.spec as { n: number }).n;
   if (kind === 'cube') {
-    const S = phys.cubeSide / 2, So = S + phys.floorT;
+    const S = phys.cubeSide / 2; // half side at the maze surface
+    const Sout = inside ? S + phys.floorT : S, Sin = inside ? S : S - phys.floorT;
     const sq = (s: number, zz: number): Vec3[] => [[-s, -s, zz], [s, -s, zz], [s, s, zz], [-s, s, zz]];
-    shell.push({ op: 'extrude', name: 'Shell outer', plane: { kind: 'xyOffset', offset: MM(-So) }, polygons: [sq(So, -So)], distance: MM(2 * So), mode: 'new', body });
-    shell.push({ op: 'extrude', name: 'Shell cavity', plane: { kind: 'xyOffset', offset: MM(-S) }, polygons: [sq(S, -S)], distance: MM(2 * S), mode: 'cut', body });
-    volume += (2 * So) ** 3 - (2 * S) ** 3;
+    shell.push({ op: 'extrude', name: 'Shell outer', plane: { kind: 'xyOffset', offset: MM(-Sout) }, polygons: [sq(Sout, -Sout)], distance: MM(2 * Sout), mode: 'new', body });
+    shell.push({ op: 'extrude', name: 'Shell cavity', plane: { kind: 'xyOffset', offset: MM(-Sin) }, polygons: [sq(Sin, -Sin)], distance: MM(2 * Sin), mode: 'cut', body });
+    volume += (2 * Sout) ** 3 - (2 * Sin) ** 3;
     const pitch = phys.cubeSide / n;
-    // face planes: just inside the shell material, normal pointing inward
+    // face planes just inside the shell material, with the normal pointing toward the ball (where the walls grow)
     const facePlane = (panel: number): PlaneSpec => {
       const nrm = FACES[panel]!.n;
       const base = nrm[2] !== 0 ? 'XY' : nrm[0] !== 0 ? 'YZ' : 'XZ';
       const positive = nrm[0] + nrm[1] + nrm[2] > 0;
-      // a flipped base plane has its normal reversed, so the offset sign reverses with it
-      return { kind: 'offset', base, flip: positive, offset: MM(positive ? -(S + overlap) : -(S + overlap)) };
+      const pos = (positive ? 1 : -1) * (S - sgn * overlap); // position of the plane along the face axis
+      const dir = (positive ? 1 : -1) * sgn;               // wanted normal along that axis
+      const flip = dir < 0;                                  // the base plane normal is +axis; flipping reverses it and the offset
+      return { kind: 'offset', base, flip, offset: MM(flip ? -pos : pos) };
     };
     for (const panel of topo.panels()) {
       const plane = facePlane(panel.id);
@@ -215,20 +225,22 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
       return nrm[0] !== 0 ? 'X' : nrm[1] !== 0 ? 'Y' : 'Z';
     });
     volume -= holeCells(maze).length * Math.PI * holeR ** 2 * phys.floorT;
+    const So = inside ? Sout : S + phys.wallH;
     return finish(maze, topo, phys, opts, shell, walls, holes, volume, [[-So, -So, -So], [So, So, So]], body);
   }
 
   // sphere: hollow shell by revolving a half annulus about z; walls as sectors on great-circle planes
-  const R = phys.sphereDia / 2, Ro = R + phys.floorT;
+  const R = phys.sphereDia / 2; // radius at the maze surface
+  const Rout = inside ? R + phys.floorT : R, Rin = inside ? R : R - phys.floorT;
   shell.push({
     op: 'revolve', name: 'Shell', plane: { kind: 'offset', base: 'XZ', flip: false, offset: MM(0) }, mode: 'new', body,
     arcs: [
-      [R3([0, 0, -R]), R3([R, 0, 0]), R3([0, 0, R])],
-      [R3([0, 0, -Ro]), R3([Ro, 0, 0]), R3([0, 0, Ro])],
+      [R3([0, 0, -Rin]), R3([Rin, 0, 0]), R3([0, 0, Rin])],
+      [R3([0, 0, -Rout]), R3([Rout, 0, 0]), R3([0, 0, Rout])],
     ],
-    lines: [[R3([0, 0, -Ro]), R3([0, 0, -R])], [R3([0, 0, R]), R3([0, 0, Ro])]],
+    lines: [[R3([0, 0, -Rout]), R3([0, 0, -Rin])], [R3([0, 0, Rin]), R3([0, 0, Rout])]],
   });
-  volume += (4 / 3) * Math.PI * (Ro ** 3 - R ** 3);
+  volume += (4 / 3) * Math.PI * (Rout ** 3 - Rin ** 3);
   const planes = new Map<string, { plane: PlaneSpec; sectors: SectorSpec[]; label: string }>();
   const addRun = (panel: number, r: Run, h0: number, label: string) => {
     const f = FACES[panel]!;
@@ -243,9 +255,10 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
     const ang = Math.acos(Math.max(-1, Math.min(1, dot3(p0, p1))));
     const ext = half / R;
     const e1 = norm3(cross3(nrm, p0));
-    const sgn = dot3(e1, p1) >= 0 ? 1 : -1;
-    const at = (t: number, rr: number): Vec3 => R3(scale3(add3(scale3(p0, Math.cos(t)), scale3(e1, sgn * Math.sin(t))), rr));
-    const rIn = R - phys.wallH + h0, rOut = R + overlap;
+    const dirSgn = dot3(e1, p1) >= 0 ? 1 : -1;
+    const at = (t: number, rr: number): Vec3 => R3(scale3(add3(scale3(p0, Math.cos(t)), scale3(e1, dirSgn * Math.sin(t))), rr));
+    const rA = rAt(R, phys.wallH), rB = rAt(R, h0 - (h0 === 0 ? overlap : 0));
+    const rIn = Math.min(rA, rB), rOut = Math.max(rA, rB);
     const a0 = -ext, a1 = ang + ext, mid = (a0 + a1) / 2;
     g.sectors.push({ innerStart: at(a0, rIn), innerMid: at(mid, rIn), innerEnd: at(a1, rIn), outerStart: at(a0, rOut), outerMid: at(mid, rOut), outerEnd: at(a1, rOut) });
     volume += (a1 - a0) * (rOut - rIn) * ((rOut + rIn) / 2) * phys.wallT;
@@ -258,6 +271,7 @@ export function planShell(maze: Maze, topo: Topology, phys: PhysicalParams, opts
     return Math.hypot(c[0], c[1]) < 1e-6 ? 'X' : 'Z';
   });
   volume -= holeCells(maze).length * Math.PI * holeR ** 2 * phys.floorT;
+  const Ro = inside ? Rout : R + phys.wallH;
   return finish(maze, topo, phys, opts, shell, walls, holes, volume, [[-Ro, -Ro, -Ro], [Ro, Ro, Ro]], body);
 }
 

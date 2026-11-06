@@ -27,11 +27,12 @@ describe('shell simulation', () => {
     expect(Math.hypot(sim.state.u - u0, sim.state.v - v0)).toBeLessThan(1e-3);
   });
 
-  for (const [seed, spec] of SPECS) {
-    it(`${seed}: random steering never crosses a wall`, () => {
+  for (const [seed, spec] of SPECS) for (const side of ['outside', 'inside'] as const) {
+    const PHYS = { ...DEFAULT_PHYSICAL, shellSide: side };
+    it(`${seed} ${side}: random steering never crosses a wall`, () => {
       const { maze } = generate({ topology: spec, seed, params: { trapsPerLayer: 1, bridges: 2 } });
       const t = createTopology(maze.topology);
-      const sim = new ShellSim(maze, t, DEFAULT_PHYSICAL);
+      const sim = new ShellSim(maze, t, PHYS);
       const ctl = new ShellController(sim);
       let prev = sim.state.cell;
       let a = 0;
@@ -48,10 +49,10 @@ describe('shell simulation', () => {
       }
     });
 
-    it(`${seed}: autopilot reaches the goal`, () => {
+    it(`${seed} ${side}: autopilot reaches the goal`, () => {
       const { maze } = generate({ topology: spec, seed: `${seed}-auto`, params: { trapsPerLayer: 1, bridges: 2 } });
       const t = createTopology(maze.topology);
-      const sim = new ShellSim(maze, t, DEFAULT_PHYSICAL);
+      const sim = new ShellSim(maze, t, PHYS);
       const ctl = new ShellController(sim);
       const pilot = new ShellAutopilot(maze, t, sim);
       const visited = new Set<CellId>();

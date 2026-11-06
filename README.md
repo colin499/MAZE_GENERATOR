@@ -22,13 +22,15 @@ viewport, `Cmd/Ctrl+Z` undo, `f` fit, `t` top view. "Harder" searches 24 seeds f
 "Regenerate unlocked" keeps locked cells and rebuilds the rest. Work autosaves in the browser; Save/Load as JSON.
 
 ## Shapes
-Besides flat boards and stacked layers, the maze can live on the **inside of a tube** (cylinder: the ball enters at
-one end and must reach the exit hole in the far end cap), on the **inside of a hollow cube**, or on the **inside of a
-hollow sphere** (six cube faces projected onto the sphere; every wall follows a great circle). Walls are ribs on the
-inner surface; traps are holes through the shell. The Physical panel shows the channel width between walls at the
-ball for the chosen shell size and cell count, and refuses sizes the ball cannot pass. Play mode turns the whole
-object (arrows / WASD / drag) instead of tilting a board. The View section switches between the 3D shape (with a
-cutaway so you can see inside) and the unfolded net, which is easier to edit.
+Besides flat boards and stacked layers, the maze can live on a **cylinder** (tube), a **cube**, or a **sphere** (six
+cube faces projected onto the sphere; every wall follows a great circle). By default the maze is on the **outer
+surface**: the walls are ribs standing out from the shell and the ball rides on the outside, held on by a clear
+sleeve or outer shell in the physical build. "Maze on: inner surface" in the Physical panel puts it inside instead
+(the tube then gets end caps with an exit hole; the editor shows a cutaway). The nominal size (tube Ø, cube side,
+sphere Ø) is measured at the maze surface; the shell is the floor thickness deep on the other side. Traps are holes
+through the shell. The Physical panel shows the channel width between walls at the ball for the chosen size and cell
+count and refuses sizes the ball cannot pass. Play mode turns the whole object (arrows / WASD / drag) instead of
+tilting a board. The View section switches between the 3D shape and the unfolded net, which is easier to edit.
 
 ## Layers
 Click a layer number to edit it; the other layers turn translucent ("ghost") so you keep the context of the levels

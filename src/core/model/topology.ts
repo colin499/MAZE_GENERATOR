@@ -46,6 +46,7 @@ export interface SurfaceParams {
   readonly tubeDia: number;
   readonly cubeSide: number;
   readonly sphereDia: number;
+  readonly shellSide: 'outside' | 'inside';
 }
 
 export interface SurfaceFrame {
@@ -65,8 +66,10 @@ export interface Surface {
   frame(panel: number, u: number, v: number): SurfaceFrame;
   /** mm per grid unit along u and v at (u, v), measured at height h. */
   metric(panel: number, u: number, v: number, h: number): readonly [number, number];
-  /** The ball is enclosed: render with a cutaway and control by rotating the object. */
+  /** The ball rides on a shell (inside or outside): the player rotates the object. */
   readonly closed: boolean;
+  /** The maze is on the inside of the shell: render with a cutaway. */
+  readonly cutaway: boolean;
   /** Walls bend with the surface (sample runs finely). */
   readonly curved: boolean;
   readonly bbox: { readonly min: Vec3; readonly max: Vec3 };
@@ -119,7 +122,7 @@ export interface Topology {
 /** Build a Surface from a point function; frame and metric come from finite differences. */
 export function surfaceFromPoint(
   point: Surface['point'],
-  opts: { closed: boolean; curved: boolean; bbox: Surface['bbox']; edgeInset: number },
+  opts: { closed: boolean; cutaway?: boolean; curved: boolean; bbox: Surface['bbox']; edgeInset: number },
 ): Surface {
   const EPS = 1e-3;
   const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -129,6 +132,7 @@ export function surfaceFromPoint(
   return {
     point,
     closed: opts.closed,
+    cutaway: !!opts.cutaway,
     curved: opts.curved,
     bbox: opts.bbox,
     edgeInset: opts.edgeInset,

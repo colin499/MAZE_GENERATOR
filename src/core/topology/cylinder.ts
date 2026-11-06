@@ -75,13 +75,16 @@ export class CylinderTopology implements Topology {
         bbox: { min: [0, -half, 0], max: [this.around * pu, L + half, p.floorT + p.wallH] },
       });
     } else {
+      const inside = p.shellSide === 'inside';
+      const sgn = inside ? -1 : 1; // the maze surface is at radius R; h grows away from the shell material
+      const Ro = inside ? R + p.floorT : R + p.wallH;
       s = surfaceFromPoint((_panel, u, v, h) => {
         const a = (2 * Math.PI * u) / this.around;
-        const r = R - h;
+        const r = R + sgn * h;
         return [r * Math.cos(a), r * Math.sin(a), v * pv];
       }, {
-        closed: true, curved: true, edgeInset: 0,
-        bbox: { min: [-R - p.floorT, -R - p.floorT, -p.floorT], max: [R + p.floorT, R + p.floorT, L + p.floorT] },
+        closed: true, cutaway: inside, curved: true, edgeInset: 0,
+        bbox: { min: [-Ro, -Ro, inside ? -p.floorT : -half], max: [Ro, Ro, L + (inside ? p.floorT : half)] },
       });
     }
     cache.set(p, s);
