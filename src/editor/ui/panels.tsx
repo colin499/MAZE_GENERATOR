@@ -27,6 +27,7 @@ export function Toolbar(): JSX.Element {
         ))}
       </div>
       <div class="spacer" />
+      <button class={S.play.value ? 'active' : ''} onClick={() => (S.play.value ? S.stopPlay() : S.startPlay())} title="Play mode (p)">{S.play.value ? '■ Stop' : '▶ Play'}</button>
       <button disabled={!S.canUndo.value} onClick={S.undo} title="Cmd/Ctrl+Z">Undo</button>
       <button disabled={!S.canRedo.value} onClick={S.redo} title="Shift+Cmd/Ctrl+Z">Redo</button>
     </header>
@@ -91,19 +92,44 @@ export function GeneratePanel(): JSX.Element {
   );
 }
 
+const MODE_LABEL: Record<S.LayerMode, string> = { solid: 'solid', ghost: 'ghost', hidden: 'hidden' };
+const MODE_NEXT: Record<S.LayerMode, S.LayerMode> = { solid: 'ghost', ghost: 'hidden', hidden: 'solid' };
+
 export function LayersPanel(): JSX.Element {
   const t = S.topo.value;
   const layers = Array.from({ length: t.layerCount }, (_, i) => i);
   const active = S.activeLayer.value;
+  const modes = S.effectiveLayerModes.value;
+  const playing = !!S.play.value;
   return (
     <section class="layers">
       <h2>Layers</h2>
       <div class="btns">
-        <button class={active < 0 ? 'active' : ''} onClick={() => (S.activeLayer.value = -1)}>All</button>
+        <button class={active < 0 ? 'active' : ''} onClick={S.showAllLayers} title="Edit any layer, all solid">All</button>
         {layers.slice().reverse().map((k) => (
-          <button key={k} class={active === k ? 'active' : ''} onClick={() => (S.activeLayer.value = k)}>{k === t.layerCount - 1 && t.layerCount > 1 ? `${k} (top)` : k}</button>
+          <button key={k} class={active === k ? 'active' : ''} onClick={() => S.focusLayer(k)} title={`Edit layer ${k}; other layers become translucent`}>{k === t.layerCount - 1 && t.layerCount > 1 ? `${k} (top)` : k}</button>
         ))}
       </div>
+      {t.layerCount > 1 && (
+        <table class="layer-table"><tbody>
+          {layers.slice().reverse().map((k) => (
+            <tr key={k} class={active === k ? 'active' : ''}>
+              <td>Layer {k}{k === t.layerCount - 1 ? ' (top)' : k === 0 ? ' (bottom)' : ''}</td>
+              <td>
+                <button class={`mode ${modes[k]}`} disabled={active === k || playing} onClick={() => S.setLayerMode(k, MODE_NEXT[modes[k] ?? 'solid'])} title="Click to cycle solid → ghost → hidden">{active === k ? 'editing' : MODE_LABEL[modes[k] ?? 'solid']}</button>
+              </td>
+            </tr>
+          ))}
+        </tbody></table>
+      )}
+      {t.layerCount > 1 && (
+        <div class="row">
+          <label>Other layers</label>
+          <div class="btns">
+            {(['solid', 'ghost', 'hidden'] as const).map((m) => <button key={m} disabled={playing} onClick={() => S.setOtherLayers(m)}>{m}</button>)}
+          </div>
+        </div>
+      )}
       {active >= 0 && (
         <div class="btns" style="margin-top:6px">
           <button onClick={() => S.lockLayer(active, true)}>Lock layer</button>
@@ -115,6 +141,48 @@ export function LayersPanel(): JSX.Element {
         <span>{S.maze.value.locked.size}</span>
         {S.maze.value.locked.size > 0 && <button onClick={S.clearLocks}>Clear</button>}
       </div>
+      {playing && <p class="hint">While playing, layers above the ball are ghosted automatically (X-ray).</p>}
+    </section>
+  );
+}
+
+export function PlayPanel(): JSX.Element {
+  const playing = !!S.play.value;
+  const p = S.playPrefs.value;
+  const st = S.playStatus.value;
+  const blocked = !S.solution.value.solvable;
+  const Check = ({ label, k }: { label: string; k: 'autopilot' | 'follow' | 'xray' }) => (
+    <label class="check"><input type="checkbox" checked={p[k]} onChange={(e) => S.updatePlay({ [k]: (e.target as HTMLInputElement).checked } as Partial<S.PlaySettings>)} /> {label}</label>
+  );
+  return (
+    <section class="play">
+      <h2>Play</h2>
+      <div class="btns">
+        {playing
+          ? <button class="primary" onClick={S.stopPlay}>Stop</button>
+          : <button class="primary" onClick={S.startPlay} disabled={blocked} title="Roll a real ball through the maze (p)">▶ Play</button>}
+        <button onClick={S.resetBall} disabled={!playing} title="Put the ball back at the start (R)">Reset ball</button>
+      </div>
+      <div class="checks">
+        <Check label="Autopilot (demo run along the solution)" k="autopilot" />
+        <Check label="Camera follows the ball" k="follow" />
+        <Check label="X-ray layers above the ball" k="xray" />
+      </div>
+      <Range label="Max tilt" value={p.maxTiltDeg} min={2} max={15} step={0.5} onChange={(v) => S.updatePlay({ maxTiltDeg: v })} fmt={(v) => `${v}°`} />
+      <Range label="Sim speed" value={p.speed} min={0.25} max={2} step={0.25} onChange={(v) => S.updatePlay({ speed: v })} fmt={(v) => `${v}×`} />
+      {st && (
+        <table class="metrics"><tbody>
+          <tr><td>State</td><td>{st.phase}</td></tr>
+          <tr><td>Layer</td><td>{st.layer}</td></tr>
+          <tr><td>Time</td><td>{st.elapsed.toFixed(1)} s</td></tr>
+          <tr><td>Tilt x / y</td><td>{(st.tiltX * 180 / Math.PI).toFixed(1)}° / {(st.tiltY * 180 / Math.PI).toFixed(1)}°</td></tr>
+          <tr><td>Dropouts taken</td><td>{st.drops}</td></tr>
+          <tr><td>Traps hit</td><td>{st.traps}</td></tr>
+        </tbody></table>
+      )}
+      {S.playLog.value.length > 0 && <div class="log">{S.playLog.value.map((l, i) => <div key={i}>{l}</div>)}</div>}
+      <p class="hint">Real rolling-ball physics on a tilting board: gravity {`(5/7 g·sinθ)`}, wall bounces, rolling resistance, hole lips. Bridges are passed underneath; dropouts land on the layer below; traps lose the ball. Tilt with <kbd>←↑↓→</kbd> / <kbd>WASD</kbd> or left-drag; right-drag orbits.</p>
+      {blocked && !playing && <div class="diag error">The maze is unsolvable; fix it before playing.</div>}
     </section>
   );
 }

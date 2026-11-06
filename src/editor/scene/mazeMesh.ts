@@ -56,9 +56,6 @@ export function buildMazeScene(maze: Maze, topo: Topology, phys: PhysicalParams,
   const layers: LayerMeshes[] = [];
   const slots: SlotRef[] = [];
   const cells: CellId[] = [];
-  const wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, roughness: 0.8, metalness: 0.05 });
-  const bridgeMat = new THREE.MeshStandardMaterial({ color: COLORS.bridge, roughness: 0.7 });
-  const floorMat = new THREE.MeshStandardMaterial({ color: COLORS.floor, roughness: 0.95 });
   const maxHeat = heat ? heat.reduce((a, b) => Math.max(a, b), 0) : 0;
 
   for (const panel of topo.panels()) {
@@ -68,6 +65,10 @@ export function buildMazeScene(maze: Maze, topo: Topology, phys: PhysicalParams,
     group.name = `layer-${k}`;
     const W = panel.w * pitch, H = panel.h * pitch;
     const layerCells = cellsOnLayer(topo, k);
+    // materials are per layer so a layer can be ghosted independently
+    const wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, roughness: 0.8, metalness: 0.05 });
+    const bridgeMat = new THREE.MeshStandardMaterial({ color: COLORS.bridge, roughness: 0.7 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: COLORS.floor, roughness: 0.95 });
 
     // floor: one plate, plus per-cell colour tiles for locks / heat / shafts
     const floor = new THREE.Mesh(place(box(W + phys.wallT, H + phys.wallT, phys.floorT), W / 2, H / 2, z0 + phys.floorT / 2), floorMat);
@@ -125,6 +126,7 @@ export function buildMazeScene(maze: Maze, topo: Topology, phys: PhysicalParams,
     if (wallGeom.length) {
       const m = new THREE.Mesh(mergeGeometries(wallGeom)!, wallMat);
       m.castShadow = true;
+      m.userData.shadow = true;
       group.add(m);
     }
     const bridgeGeom = runGeoms(bridgeSegs, z0 + phys.floorT + phys.bridgeLift, phys.wallH - phys.bridgeLift);
@@ -152,6 +154,7 @@ export function buildMazeScene(maze: Maze, topo: Topology, phys: PhysicalParams,
       const i = topo.cell(maze.start);
       const ball = new THREE.Mesh(new THREE.SphereGeometry(phys.ballDia / 2, 24, 16), new THREE.MeshStandardMaterial({ color: COLORS.start, metalness: 0.6, roughness: 0.3 }));
       ball.position.set((i.u + 0.5) * pitch, (i.v + 0.5) * pitch, z0 + phys.floorT + phys.ballDia / 2);
+      ball.name = 'startBall';
       group.add(ball);
     }
 
@@ -201,6 +204,28 @@ export function buildSolutionLine(path: readonly CellId[], topo: Topology, phys:
   const tube = new THREE.TubeGeometry(curve, Math.max(8, pts.length * 3), phys.ballDia * 0.18, 8, false);
   return new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: COLORS.solution }));
 }
+
+export type LayerMode = 'solid' | 'ghost' | 'hidden';
+
+/** Show a layer group solid, translucent (context while editing another layer) or hidden. */
+export function applyLayerMode(group: THREE.Group, mode: LayerMode): void {
+  group.visible = mode !== 'hidden';
+  const ghost = mode === 'ghost';
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    for (const mat of mats) {
+      if (mat.transparent === ghost && (ghost ? mat.opacity === GHOST_OPACITY : mat.opacity === 1)) continue;
+      mat.transparent = ghost;
+      mat.opacity = ghost ? GHOST_OPACITY : 1;
+      mat.depthWrite = !ghost;
+      mat.needsUpdate = true;
+    }
+    m.castShadow = !ghost && m.userData.shadow === true;
+  });
+}
+const GHOST_OPACITY = 0.16;
 
 export function disposeObject(obj: THREE.Object3D): void {
   obj.traverse((o) => {

@@ -41,3 +41,19 @@ table.metrics td:last-child { text-align: right; color: var(--fg); font-variant-
 .hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .layers button { min-width: 36px; }
 kbd { background: var(--panel2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-size: 11px; }
+
+table.layer-table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+table.layer-table td { padding: 2px 0; color: var(--muted); }
+table.layer-table td:last-child { text-align: right; }
+table.layer-table tr.active td { color: var(--fg); }
+button.mode { min-width: 64px; font-size: 12px; padding: 3px 8px; }
+button.mode.ghost { color: var(--accent); }
+button.mode.hidden { color: var(--muted); text-decoration: line-through; }
+.checks { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+label.check { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.log { margin: 6px 0; font-size: 12px; color: var(--muted); max-height: 120px; overflow-y: auto; font-variant-numeric: tabular-nums; }
+.play-overlay { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; background: rgba(27,34,48,.7); padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border); }
+.play-overlay .big { font-size: 20px; font-weight: 700; }
+.play-overlay .small { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.play-overlay.won .big { color: var(--ok); }
+.play-overlay.lost .big { color: var(--bad); }

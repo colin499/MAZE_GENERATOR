@@ -19,6 +19,9 @@ import { decodeMaze, encodeMaze } from '@core/serialize/codec';
 import { setPassage, togglePassage, withGoal, withLocked, withStart, withTrap } from '@core/model/ops';
 import { relation } from '@core/model/topology';
 import { edgeKey } from '@core/model/ids';
+import type { LayerMode } from '../scene/mazeMesh';
+import type { PlaySettings, PlayStatus } from '../scene/viewer';
+export type { LayerMode, PlaySettings, PlayStatus };
 
 export type Tool = 'wall' | 'tunnel' | 'trap' | 'dropout' | 'start' | 'goal' | 'lock';
 
@@ -63,6 +66,13 @@ export const maze = signal<Maze>(initialMaze());
 export const settings = signal<GenSettings>(settingsOf(maze.value));
 export const tool = signal<Tool>('wall');
 export const activeLayer = signal<number>(-1); // -1 = all layers
+/** Explicit display mode per layer; the active layer is always solid. */
+export const layerModes = signal<Readonly<Record<number, LayerMode>>>({});
+export const play = signal<PlaySettings | null>(null);
+export const playPrefs = signal<PlaySettings>({ autopilot: false, follow: true, xray: true, maxTiltDeg: 7, speed: 1 });
+export const playStatus = signal<PlayStatus | null>(null);
+export const playLog = signal<readonly string[]>([]);
+export const resetTick = signal(0);
 export const showSolution = signal(false);
 export const showHeat = signal(false);
 export const hoverInfo = signal<string>('');
@@ -79,6 +89,10 @@ export const solution = computed<Solution>(() => solve(maze.value, topo.value));
 export const diagnostics = computed<readonly Diagnostic[]>(() => [...genDiagnostics.value, ...validate(maze.value, topo.value)]);
 export const report = computed<DifficultyReport>(() => scoreMaze(maze.value, topo.value, 48));
 export const physIssues = computed(() => validatePhysical(phys.value));
+export const effectiveLayerModes = computed<LayerMode[]>(() => {
+  const n = topo.value.layerCount, a = activeLayer.value, m = layerModes.value;
+  return Array.from({ length: n }, (_, k) => (k === a ? 'solid' : m[k] ?? 'solid'));
+});
 
 effect(() => {
   try {
@@ -232,4 +246,59 @@ export function saveMazeJson(): string {
 
 export function updatePhys(patch: Partial<PhysicalParams>): void {
   phys.value = { ...phys.value, ...patch };
+}
+
+// ---- layers --------------------------------------------------------------------------------
+/** Edit one layer; the others become translucent context (hidden ones stay hidden). */
+export function focusLayer(k: number): void {
+  activeLayer.value = k;
+  const next: Record<number, LayerMode> = {};
+  for (let i = 0; i < topo.value.layerCount; i++) next[i] = i === k ? 'solid' : layerModes.value[i] === 'hidden' ? 'hidden' : 'ghost';
+  layerModes.value = next;
+}
+
+export function showAllLayers(): void {
+  activeLayer.value = -1;
+  layerModes.value = {};
+}
+
+export function setLayerMode(k: number, mode: LayerMode): void {
+  layerModes.value = { ...layerModes.value, [k]: mode };
+  if (mode !== 'solid' && activeLayer.value === k) activeLayer.value = -1;
+}
+
+export function setOtherLayers(mode: LayerMode): void {
+  const next: Record<number, LayerMode> = {};
+  for (let i = 0; i < topo.value.layerCount; i++) next[i] = i === activeLayer.value ? 'solid' : mode;
+  layerModes.value = next;
+}
+
+// ---- play mode -----------------------------------------------------------------------------
+export function startPlay(): void {
+  playLog.value = [];
+  play.value = playPrefs.value;
+}
+
+export function stopPlay(): void {
+  play.value = null;
+  playStatus.value = null;
+}
+
+export function updatePlay(patch: Partial<PlaySettings>): void {
+  playPrefs.value = { ...playPrefs.value, ...patch };
+  if (play.value) play.value = playPrefs.value;
+}
+
+export function resetBall(): void {
+  resetTick.value += 1;
+}
+
+export function reportPlay(status: PlayStatus, events: readonly string[]): void {
+  playStatus.value = status;
+  const notable = events.filter((e) => e !== 'bump');
+  if (notable.length) {
+    const t = `${status.elapsed.toFixed(1)}s`;
+    const text: Record<string, string> = { drop: 'dropped to layer ' + status.layer, trap: 'trap! ball lost', goal: 'GOAL reached', reset: 'back at the start' };
+    playLog.value = [...notable.map((e) => `${t} · ${text[e] ?? e}`), ...playLog.value].slice(0, 12);
+  }
 }

@@ -15,3 +15,6 @@ export * from './difficulty/score';
 export * from './serialize/codec';
 export * from './math/rng';
 export * from './math/vec';
+export * from './sim/world';
+export * from './sim/ball';
+export * from './sim/autopilot';
