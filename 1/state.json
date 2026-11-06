@@ -1,0 +1,31 @@
+{
+  "snapshot": {
+    "tabs": [
+      {
+        "id": 2,
+        "url": "file:///Users/colinlysik/Documents/BRAIN_FOOD/MAZE_BUILDER/app/MazeBuilder.html",
+        "title": "Maze Builder",
+        "favicon": "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%2335c9c0%27/%3E%3Cpath d=%27M3 3h10v2H5v2h6v2H5v2h8v2H3z%27 fill=%27%2306201f%27/%3E%3C/svg%3E",
+        "loading": false,
+        "canGoBack": false,
+        "canGoForward": false,
+        "muted": false,
+        "audible": false,
+        "blockedCount": 0,
+        "httpsFallback": false,
+        "bookmarked": false
+      }
+    ],
+    "activeId": 2
+  },
+  "pageRect": {
+    "x": 0,
+    "y": 68,
+    "width": 1280,
+    "height": 752
+  },
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.130 Safari/537.36",
+  "cookieDomains": [],
+  "vaultStatus": "uninitialized",
+  "consoleLog": []
+}

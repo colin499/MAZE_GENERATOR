@@ -76,3 +76,13 @@ Resulting body: 1, 597 faces. One `execute_code` chunk per layer is comfortably 
 - Revolve fails when the profile crosses the axis ("ASM_WIRE_X_AXIS"): revolve a half profile whose edge is the axis.
 - **Process rule**: `execute_code` runs in whatever document is active, which follows the user's tabs. Activate the
   marked scratch document and assert the marker in the same call as the build (see `scripts/` runner pattern).
+
+## Big single-layer builds (50×60 flat, 2026-11-06)
+- Fusion shows feature names as "<name> (1)"; the marker check now matches the stem, otherwise a bridge
+  retry rebuilds the batch (it did: three identical copies of one wall batch, harmless to the solid, deleted).
+- Joining thin-extruded runs into an already complex body slows down with body size: 300 runs took 3.6 s
+  on a fresh floor, 40 runs took 24 s once the body had ~4500 faces. Batches must shrink as the body grows.
+- Way around the 30 s limit: register a CustomEvent handler, keep it alive in `builtins`, and fire it;
+  `fireCustomEvent` returned False from both the main thread and a worker thread, yet the handler ran on
+  the main thread right after the call returned. Results are stored in `builtins._maze_results` and polled.
+- `scripts/rechunk.ts in.py outdir maxRuns skipRuns label` re-chunks a downloaded standalone script.

@@ -54,10 +54,12 @@ def body_named(comp, name):
     return None
 
 def marker_exists(comp, marker):
+    # Fusion shows feature names with a " (n)" suffix in the timeline, so match on the stem.
     if marker.startswith('feature:'):
         name = marker[len('feature:'):]
         for i in range(comp.features.count):
-            if comp.features.item(i).name == name:
+            fn = comp.features.item(i).name
+            if fn == name or (fn.startswith(name + ' (') and fn.endswith(')') and fn[len(name) + 2:-1].isdigit()):
                 return True
         return False
     return body_named(comp, marker) is not None
