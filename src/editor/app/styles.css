@@ -57,3 +57,7 @@ label.check { display: flex; align-items: center; gap: 6px; color: var(--muted);
 .play-overlay .small { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .play-overlay.won .big { color: var(--ok); }
 .play-overlay.lost .big { color: var(--bad); }
+
+.dialpos { min-width: 54px; text-align: center; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dialpos small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.checks button { text-align: left; }

@@ -28,6 +28,8 @@ export function Toolbar(): JSX.Element {
         ))}
       </div>
       <div class="spacer" />
+      <button onClick={() => { if (S.play.value) S.stopPlay(); S.appMode.value = 'rotary'; }} title="Play the rotary dial maze">Rotary maze</button>
+      <button onClick={() => { if (S.play.value) S.stopPlay(); S.appMode.value = 'lockbox'; }} title="Play the maze lock box">Lock box</button>
       <button class={S.play.value ? 'active' : ''} onClick={() => (S.play.value ? S.stopPlay() : S.startPlay())} title="Play mode (p)">{S.play.value ? '■ Stop' : '▶ Play'}</button>
       <button disabled={!S.canUndo.value} onClick={S.undo} title="Cmd/Ctrl+Z">Undo</button>
       <button disabled={!S.canRedo.value} onClick={S.redo} title="Shift+Cmd/Ctrl+Z">Redo</button>

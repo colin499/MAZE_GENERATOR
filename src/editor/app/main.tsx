@@ -4,6 +4,8 @@ import { effect } from '@preact/signals';
 import type { JSX } from 'preact';
 import * as S from './store';
 import { MazeViewer } from '../scene/viewer';
+import { RotaryApp } from '../rotary/RotaryApp';
+import { LockBoxApp } from '../lockbox/LockBoxApp';
 import { DiagnosticsPanel, DifficultyPanel, ExportPanel, GeneratePanel, LayersPanel, PhysicalPanel, PlayPanel, Toolbar } from '../ui/panels';
 
 const KEY_DIRS: Record<string, [number, number]> = {
@@ -97,6 +99,8 @@ function PlayOverlay(): JSX.Element {
 }
 
 function App(): JSX.Element {
+  if (S.appMode.value === 'rotary') return <RotaryApp />;
+  if (S.appMode.value === 'lockbox') return <LockBoxApp />;
   return (
     <>
       <Toolbar />
@@ -116,4 +120,8 @@ function App(): JSX.Element {
   );
 }
 
+effect(() => {
+  const want = S.appMode.value === 'rotary' ? '#rotary' : S.appMode.value === 'lockbox' ? '#lockbox' : '';
+  if (location.hash !== want) history.replaceState(null, '', want || location.pathname + location.search);
+});
 render(<App />, document.getElementById('app')!);

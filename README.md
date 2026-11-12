@@ -61,3 +61,33 @@ walls on each inner face (live `wallT`, `wallH`); a revolved sphere shell with s
 Trap and goal holes are revolve-cuts along the surface normal. On shells the wall height and hole positions are baked.
 
 See `docs/design.md` (architecture) and `docs/fusion-notes.md` (API findings and pitfalls).
+
+## Rotary maze mode
+
+The **Rotary maze** button in the toolbar (or opening the app with `#rotary` on the URL) switches to a player for
+dial-type ball mazes: a fixed top with walls and a dial underneath whose shutters rise through the floor.
+
+- Tilt with the arrow keys / WASD or by left-dragging; turn the dial with `Q` / `E` or the header buttons;
+  `R` puts the ball back at the start, `T` returns to the top view, `Esc` stops a demo or goes back to the editor.
+- The three-path maze from the `ROTARY_BALL_MAZE` project is bundled (`src/core/rotary/sampleThreePath.ts`).
+  Other mazes load from a `rotary-maze/1` JSON file, written by `maze_v2_threepath/export_app.py` in that project.
+- Recorded demos in the file (solutions and wrong turns) play back from the left panel.
+- Code: `src/core/rotary/` (model, physics, demo playback; DOM-free) and `src/editor/rotary/` (three.js view and UI).
+  `test/rotary.test.ts` steers the simulated ball through all three solutions; `node scripts/smoke-rotary.mjs`
+  checks the built app.
+
+## Lock box mode
+
+The **Lock box** button in the toolbar (or `#lockbox` on the URL) plays the maze lock box from the `MAZE_LOCK_BOX`
+project: a cylindrical box whose maze cap spins freely on a hidden bayonet lock ring until the ball drops through the
+goal hole into a ring pocket and keys the two together.
+
+- Tilt with the arrow keys / WASD or by left-dragging (relative to the screen); hold `Q` / `E` to turn the cap
+  (`Q` = counter-clockwise = unlock); `L` or Space lifts / lowers the lid; `R` puts the ball back on the start;
+  `T` / `F` top and side views; `Esc` stops a demo or goes back to the editor.
+- "See-through body" shows the ring's tabs under the body's lugs; "See-through maze cap" shows the ring pockets.
+- Two demos: the autopilot solving and opening the box, and a cheat attempt (spin and pull with no ball in the goal).
+- The v1 box is bundled (`src/core/lockbox/sampleV1.ts`). Other boxes load from a `lock-box/1` JSON file written by
+  `lockbox_cells.py --app OUT.json` in that project.
+- Code: `src/core/lockbox/` (model, physics, autopilot; DOM-free) and `src/editor/lockbox/` (three.js view and UI).
+  `test/lockbox.test.ts` covers the lock logic; `node scripts/smoke-lockbox.mjs` checks the built app.

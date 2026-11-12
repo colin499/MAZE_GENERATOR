@@ -85,6 +85,10 @@ export const phys = signal<PhysicalParams>(DEFAULT_PHYSICAL);
 export const maze = signal<Maze>(initialMaze());
 export const settings = signal<GenSettings>(settingsOf(maze.value));
 export const tool = signal<Tool>('wall');
+/** Which app is showing: the grid maze editor, the rotary maze player or the lock box (also selected by the URL hash #rotary / #lockbox). */
+export const appMode = signal<'editor' | 'rotary' | 'lockbox'>(
+  typeof location === 'undefined' ? 'editor' : location.hash === '#rotary' ? 'rotary' : location.hash === '#lockbox' ? 'lockbox' : 'editor',
+);
 export const activeLayer = signal<number>(-1); // -1 = all layers
 /** Explicit display mode per layer; the active layer is always solid. */
 export const layerModes = signal<Readonly<Record<number, LayerMode>>>({});
